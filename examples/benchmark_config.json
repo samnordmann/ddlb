@@ -1,6 +1,11 @@
 {
     "compute_only": [
-        {}
+        {
+            "size": "sharded"
+        },
+        {
+            "size": "unsharded"
+        }
     ],
     "pytorch": [
         {
