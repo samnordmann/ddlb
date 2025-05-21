@@ -11,7 +11,7 @@ from tqdm import tqdm
 import torch
 
 from .primitives import TPColumnwise
-from .primitives.TPColumnwise import PyTorchTPColumnwise
+from .primitives.TPColumnwise import PyTorchTPColumnwise, ReferenceComputeOnly
 
 class PrimitiveBenchmarkRunner:
     """Main class for running distributed primitive benchmarks."""
@@ -22,6 +22,7 @@ class PrimitiveBenchmarkRunner:
     
     IMPLEMENTATIONS = {
         'pytorch': PyTorchTPColumnwise,
+        'reference_compute_only': ReferenceComputeOnly,
     }
     
     def __init__(
