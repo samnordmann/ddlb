@@ -12,6 +12,7 @@ import torch
 
 from .primitives import TPColumnwise
 from .primitives.TPColumnwise import PyTorchTPColumnwise, ComputeOnlyTPColumnwise
+from .communicator import Communicator
 
 class PrimitiveBenchmarkRunner:
     """Main class for running distributed primitive benchmarks."""
@@ -113,8 +114,11 @@ class PrimitiveBenchmarkRunner:
             DataFrame containing benchmark results
         """
         results = []
+        comm = Communicator()
         
         for impl_id in tqdm(self.implementations, desc="Running benchmarks"):
+            comm.barrier()
+            torch.cuda.synchronize()
             # Create implementation instance
             impl, impl_options = self._create_implementation(impl_id)
             
@@ -138,10 +142,8 @@ class PrimitiveBenchmarkRunner:
                     result = impl.run()
                     end_event.record()
                     
-                    # Synchronize to ensure timing is accurate
-                    torch.cuda.synchronize()
-                    
                     # Get elapsed time in milliseconds
+                    torch.cuda.synchronize()
                     elapsed_time = start_event.elapsed_time(end_event)
                     times.append(elapsed_time)
                 

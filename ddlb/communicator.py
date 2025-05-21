@@ -78,7 +78,8 @@ class Communicator:
                 backend='nccl',
                 rank=self.rank,
                 world_size=self.world_size,
-                init_method=f"tcp://{self.master_addr}:{self.master_port}"
+                init_method=f"tcp://{self.master_addr}:{self.master_port}",
+                device_id=self.device
             )
 
         self._initialized = True
@@ -89,6 +90,7 @@ class Communicator:
         This ensures proper cleanup of distributed resources when the communicator is destroyed.
         """
         if dist.is_initialized():
+            dist.barrier()
             dist.destroy_process_group()
 
     def barrier(self):

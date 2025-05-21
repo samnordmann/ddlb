@@ -53,8 +53,8 @@ def run_benchmark(comm: Communicator, primitive: str, m: int, n: int, k: int, co
         implementations=implementations,
         dtype='float32',
         validate=True,
-        num_iterations=5,
-        num_warmups=2,
+        num_iterations=20,
+        num_warmups=5,
         implementation_options=implementation_options
     )
     results = runner.run()
@@ -112,6 +112,7 @@ def main() -> None:
     # Initialize communicator and run benchmark
     comm = Communicator()
     run_benchmark(comm, args.primitive, args.m, args.n, args.k, config)
+    del comm
 
 if __name__ == '__main__':
     main() 
