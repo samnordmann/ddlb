@@ -83,6 +83,14 @@ class Communicator:
 
         self._initialized = True
 
+    def __del__(self):
+        """
+        Destructor that cleans up the distributed process group.
+        This ensures proper cleanup of distributed resources when the communicator is destroyed.
+        """
+        if dist.is_initialized():
+            dist.destroy_process_group()
+
     def barrier(self):
         """
         Synchronize all processes at this point.
