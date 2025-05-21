@@ -23,6 +23,10 @@ class PyTorchTPColumnwise(TPColumnwise):
         # Set backend from options or use default
         self.backend = kwargs.get('backend', self.DEFAULT_OPTIONS['backend'])
         
+        # Create a new process group with specified backend
+        ranks = list(range(self.communicator.world_size))
+        self.pg = dist.new_group(ranks=ranks, backend=self.backend)
+        
         # Pre-allocate tensors for allgather
         self.A_gathered = [torch.empty_like(self.A) for _ in range(self.communicator.world_size)]
     
@@ -33,12 +37,8 @@ class PyTorchTPColumnwise(TPColumnwise):
         Returns:
             The result matrix of shape (m, n)
         """
-        # Print PyTorch configuration
-        print(f"\nPyTorch Configuration:")
-        print(f"  Backend: {self.backend}")
-        
-        # Allgather A from all GPUs
-        dist.all_gather(self.A_gathered, self.A)
+        # Allgather A from all GPUs using our specific group
+        dist.all_gather(self.A_gathered, self.A, group=self.pg)
         
         # Concatenate the gathered pieces
         A_full = torch.cat(self.A_gathered, dim=1)
