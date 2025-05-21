@@ -3,15 +3,24 @@ Example script demonstrating how to use the benchmark library with MPI
 Supports benchmarking of distributed primitives (currently TP Columnwise)
 """
 
-import os
-import torch
 import argparse
 import json
+import os
+import torch
 from ddlb import PrimitiveBenchmarkRunner
 from ddlb.communicator import Communicator
 
-def run_benchmark(comm, primitive, m, n, k, config):
-    """Run benchmark for the specified primitive with all configurations"""
+def run_benchmark(comm: Communicator, primitive: str, m: int, n: int, k: int, config: dict) -> None:
+    """Run benchmark for the specified primitive with all configurations.
+    
+    Args:
+        comm: Communicator instance for distributed environment
+        primitive: Name of the primitive to benchmark
+        m: Number of rows in first matrix
+        n: Number of columns in second matrix
+        k: Number of columns in first matrix / rows in second matrix
+        config: Dictionary of implementation configurations
+    """
     rank = comm.rank
     world_size = comm.world_size
 
@@ -35,7 +44,7 @@ def run_benchmark(comm, primitive, m, n, k, config):
                 **opts
             }
 
-    # Initialize benchmark runner
+    # Initialize and run benchmark
     runner = PrimitiveBenchmarkRunner(
         primitive=primitive,
         m=m,
@@ -48,8 +57,6 @@ def run_benchmark(comm, primitive, m, n, k, config):
         num_warmups=2,
         implementation_options=implementation_options
     )
-
-    # Run benchmarks
     results = runner.run()
 
     # Only rank 0 prints and plots results
@@ -58,28 +65,38 @@ def run_benchmark(comm, primitive, m, n, k, config):
         print(f"Matrix dimensions: ({m}, {n}, {k})")
         print(f"Total matrix size: {m*n + n*k + m*k} elements")
         print("\nDetailed Results:")
-        # Calculate TFLOPS
-        total_flops = 2 * m * n * k  # 2 FLOPs per multiply-add
-        results['Throughput (TFLOPS)'] = (total_flops / (results['mean_time (ms)'] * 1e9))  # ms to s, so 1e9
+        
+        # Calculate TFLOPS (2 FLOPs per multiply-add)
+        total_flops = 2 * m * n * k
+        results['Throughput (TFLOPS)'] = total_flops / (results['mean_time (ms)'] * 1e9)
         
         # Create a more readable implementation name that includes options
-        results['config'] = results['implementation'].apply(
-            lambda x: f"{implementation_options[x]['implementation']} ({', '.join(f'{k}={v}' for k, v in implementation_options[x].items() if k != 'implementation')})"
-        )
+        def format_config(x):
+            opts = implementation_options[x]
+            impl = opts['implementation']
+            other_opts = {k: v for k, v in opts.items() if k != 'implementation'}
+            if other_opts:
+                return f"{impl} ({', '.join(f'{k}={v}' for k, v in other_opts.items())})"
+            return impl
         
-        # Reorder columns to have TFLOPS first
+        results['config'] = results['implementation'].apply(format_config)
+        
+        # Display and plot results
         cols = ['config', 'Throughput (TFLOPS)', 'mean_time (ms)', 'std_time', 'min_time', 'max_time']
         print(results[cols])
         runner.plot_results(results)
 
-def main():
-    # Parse command line arguments
+def main() -> None:
+    """Main entry point for the benchmark script."""
     parser = argparse.ArgumentParser(description='Run distributed primitive benchmarks')
     parser.add_argument('--primitive', type=str, default='tp_columnwise',
                       help='Primitive to benchmark (currently only tp_columnwise supported)')
-    parser.add_argument('--m', type=int, default=8192, help='Number of rows in first matrix')
-    parser.add_argument('--n', type=int, default=4096, help='Number of columns in second matrix')
-    parser.add_argument('--k', type=int, default=8192, help='Number of columns in first matrix / rows in second matrix')
+    parser.add_argument('--m', type=int, default=8192, 
+                      help='Number of rows in first matrix')
+    parser.add_argument('--n', type=int, default=4096, 
+                      help='Number of columns in second matrix')
+    parser.add_argument('--k', type=int, default=8192, 
+                      help='Number of columns in first matrix / rows in second matrix')
     parser.add_argument('--config', type=str, default='examples/benchmark_config.json',
                       help='Path to JSON configuration file')
     args = parser.parse_args()
@@ -92,10 +109,8 @@ def main():
         print(f"Error loading config file: {e}")
         return
 
-    # Initialize communicator (handles env vars, CUDA, and process group)
+    # Initialize communicator and run benchmark
     comm = Communicator()
-
-    # Run the benchmark with all configurations
     run_benchmark(comm, args.primitive, args.m, args.n, args.k, config)
 
 if __name__ == '__main__':

@@ -1,4 +1,7 @@
 {
+    "compute_only": [
+        {}
+    ],
     "pytorch": [
         {
             "backend": "nccl"
@@ -12,8 +15,5 @@
         {
             "backend": "ucc/tl/ucp"
         }
-    ],
-    "compute_only": [
-        {}
     ]
 } 
