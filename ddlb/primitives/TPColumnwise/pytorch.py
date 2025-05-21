@@ -27,8 +27,13 @@ class PyTorchTPColumnwise(TPColumnwise):
         ranks = list(range(self.communicator.world_size))
         self.pg = dist.new_group(ranks=ranks, backend=self.backend)
         
-        # Pre-allocate tensors for allgather
-        self.A_gathered = [torch.empty_like(self.A) for _ in range(self.communicator.world_size)]
+        # Pre-allocate tensor for allgather
+        self.A_gathered = torch.empty(
+            self.m,
+            self.k,
+            dtype=self.A.dtype,
+            device=self.A.device
+        )
     
     def run(self) -> torch.Tensor:
         """
@@ -38,12 +43,9 @@ class PyTorchTPColumnwise(TPColumnwise):
             The result matrix of shape (m, n)
         """
         # Allgather A from all GPUs using our specific group
-        dist.all_gather(self.A_gathered, self.A, group=self.pg)
-        
-        # Concatenate the gathered pieces
-        A_full = torch.cat(self.A_gathered, dim=1)
+        dist.all_gather_into_tensor(self.A_gathered, self.A, group=self.pg)
         
         # Compute matrix multiplication
-        C = torch.matmul(A_full, self.B)
+        C = torch.matmul(self.A_gathered, self.B)
         
         return C

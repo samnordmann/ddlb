@@ -101,10 +101,10 @@ class TPColumnwise(ABC):
         ) - 1
 
         # Shard A across GPUs
-        chunk_size = self.k // self.communicator.world_size
+        chunk_size = self.m // self.communicator.world_size
         start_idx = self.communicator.rank * chunk_size
-        end_idx = start_idx + chunk_size if self.communicator.rank < self.communicator.world_size - 1 else self.k
-        self.A = self.A_unsharded[:, start_idx:end_idx].to(self.communicator.device)
+        end_idx = start_idx + chunk_size if self.communicator.rank < self.communicator.world_size - 1 else self.m
+        self.A = self.A_unsharded[start_idx:end_idx, :].to(self.communicator.device)
 
         # Generate matrix B with uniform distribution in [-1, 1]
         self.B = 2 * torch.rand(
