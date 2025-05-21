@@ -110,7 +110,7 @@ class PrimitiveBenchmarkRunner:
                 torch.cuda.synchronize()
                 
                 # Get elapsed time in milliseconds
-                elapsed_time = start_event.elapsed_time(end_event) / 1000.0  # Convert to seconds
+                elapsed_time = start_event.elapsed_time(end_event)
                 times.append(elapsed_time)
             
             # Calculate statistics
@@ -119,7 +119,7 @@ class PrimitiveBenchmarkRunner:
             
             results.append({
                 'implementation': impl_name,
-                'mean_time': mean_time,
+                'mean_time (ms)': mean_time,
                 'std_time': std_time,
                 'min_time': np.min(times),
                 'max_time': np.max(times),
@@ -151,7 +151,7 @@ class PrimitiveBenchmarkRunner:
         plt.figure(figsize=(12, 6))
         
         # Plot mean times with error bars
-        plt.bar(results['implementation'], results['mean_time'], 
+        plt.bar(results['implementation'], results['mean_time (ms)'], 
                 yerr=results['std_time'], capsize=5)
         
         plt.title(f'{self.primitive.upper()} Benchmark\n'

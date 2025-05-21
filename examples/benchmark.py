@@ -39,12 +39,12 @@ def run_benchmark(comm, primitive, m, n, k):
         print(f"Matrix dimensions: ({m}, {n}, {k})")
         print(f"Total matrix size: {m*n + n*k + m*k} elements")
         print("\nDetailed Results:")
-        print(results[['implementation', 'mean_time', 'std_time', 'min_time', 'max_time']])
-        # Calculate and print throughput (TFLOPS)
+        # Calculate TFLOPS
         total_flops = 2 * m * n * k  # 2 FLOPs per multiply-add
-        results['tflops'] = (total_flops / (results['mean_time'] * 1e12))
-        print("\nThroughput (TFLOPS):")
-        print(results[['implementation', 'tflops']])
+        results['Throughput (TFLOPS)'] = (total_flops / (results['mean_time (ms)'] * 1e9))  # ms to s, so 1e9
+        # Reorder columns to have TFLOPS first
+        cols = ['implementation', 'Throughput (TFLOPS)', 'mean_time (ms)', 'std_time', 'min_time', 'max_time']
+        print(results[cols])
         runner.plot_results(results)
 
 def main():
