@@ -5,6 +5,12 @@
         },
         {
             "backend": "ucc"
+        },
+        {
+            "backend": "ucc/tl/cuda"
+        },
+        {
+            "backend": "ucc/tl/ucp"
         }
     ],
     "compute_only": [

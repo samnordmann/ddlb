@@ -64,34 +64,46 @@ class PrimitiveBenchmarkRunner:
         self.num_warmups = num_warmups
         self.dtype = dtype
         self.validate = validate
+        self.implementations = implementations
+        self.implementation_options = implementation_options or {}
+    
+    def _create_implementation(self, impl_id: str):
+        """
+        Create a single implementation instance.
         
-        # Validate implementations and merge options with defaults
-        self.implementations = {}
-        for impl_id in implementations:
-            # Extract base implementation name and options
-            if '_' in impl_id:
-                base_impl = '_'.join(impl_id.split('_')[:-1])
-                impl_options = implementation_options[impl_id]
-            else:
-                base_impl = impl_id
-                impl_options = implementation_options.get(impl_id, {})
+        Args:
+            impl_id: Implementation identifier
             
-            if base_impl not in self.IMPLEMENTATIONS:
-                raise ValueError(f"Unknown implementation: {base_impl}")
-            
-            # Get implementation options, merging with class defaults
-            impl_class = self.IMPLEMENTATIONS[base_impl]
-            options = getattr(impl_class, 'DEFAULT_OPTIONS', {}).copy()
-            if impl_options:
-                options.update(impl_options)
-            
-            self.implementations[impl_id] = impl_class(
-                m=m,
-                n=n,
-                k=k,
-                dtype=dtype,
-                **options
-            )
+        Returns:
+            Tuple of (implementation instance, implementation options)
+        """
+        # Extract base implementation name and options
+        if '_' in impl_id:
+            base_impl = '_'.join(impl_id.split('_')[:-1])
+            impl_options = self.implementation_options[impl_id]
+        else:
+            base_impl = impl_id
+            impl_options = self.implementation_options.get(impl_id, {})
+        
+        if base_impl not in self.IMPLEMENTATIONS:
+            raise ValueError(f"Unknown implementation: {base_impl}")
+        
+        # Get implementation options, merging with class defaults
+        impl_class = self.IMPLEMENTATIONS[base_impl]
+        options = getattr(impl_class, 'DEFAULT_OPTIONS', {}).copy()
+        if impl_options:
+            options.update(impl_options)
+        
+        # Create implementation instance
+        impl = impl_class(
+            m=self.m,
+            n=self.n,
+            k=self.k,
+            dtype=self.dtype,
+            **options
+        )
+        
+        return impl, impl_options
     
     def run(self) -> pd.DataFrame:
         """
@@ -102,61 +114,72 @@ class PrimitiveBenchmarkRunner:
         """
         results = []
         
-        for impl_name, impl in tqdm(self.implementations.items(), desc="Running benchmarks"):
-            # Get implementation options for result tracking
-            impl_options = {k: v for k, v in impl.__dict__.items() 
-                          if k in getattr(impl, 'DEFAULT_OPTIONS', {})}
+        for impl_id in tqdm(self.implementations, desc="Running benchmarks"):
+            # Create implementation instance
+            impl, impl_options = self._create_implementation(impl_id)
             
-            # Warmup runs
-            for _ in range(self.num_warmups):
-                impl.run()
-            
-            # Create CUDA events for timing
-            start_event = torch.cuda.Event(enable_timing=True)
-            end_event = torch.cuda.Event(enable_timing=True)
-            
-            # Actual benchmark runs
-            times = []
-            for _ in range(self.num_iterations):
-                start_event.record()
-                result = impl.run()
-                end_event.record()
+            try:
+                # Get implementation options for result tracking
+                impl_options = {k: v for k, v in impl.__dict__.items() 
+                              if k in getattr(impl, 'DEFAULT_OPTIONS', {})}
                 
-                # Synchronize to ensure timing is accurate
-                torch.cuda.synchronize()
+                # Warmup runs
+                for _ in range(self.num_warmups):
+                    impl.run()
                 
-                # Get elapsed time in milliseconds
-                elapsed_time = start_event.elapsed_time(end_event)
-                times.append(elapsed_time)
+                # Create CUDA events for timing
+                start_event = torch.cuda.Event(enable_timing=True)
+                end_event = torch.cuda.Event(enable_timing=True)
+                
+                # Actual benchmark runs
+                times = []
+                for _ in range(self.num_iterations):
+                    start_event.record()
+                    result = impl.run()
+                    end_event.record()
+                    
+                    # Synchronize to ensure timing is accurate
+                    torch.cuda.synchronize()
+                    
+                    # Get elapsed time in milliseconds
+                    elapsed_time = start_event.elapsed_time(end_event)
+                    times.append(elapsed_time)
+                
+                # Calculate statistics
+                mean_time = np.mean(times)
+                std_time = np.std(times)
+                
+                # Create result row with implementation options
+                result_row = {
+                    'implementation': impl_id,
+                    'mean_time (ms)': mean_time,
+                    'std_time': std_time,
+                    'min_time': np.min(times),
+                    'max_time': np.max(times),
+                    'm': self.m,
+                    'n': self.n,
+                    'k': self.k,
+                    'dtype': self.dtype,
+                    **impl_options  # Add implementation options to results
+                }
+                
+                # Validate results if requested
+                if self.validate:
+                    try:
+                        impl.validate(result)
+                        result_row['valid'] = True
+                    except Exception as e:
+                        result_row['valid'] = False
+                        print(f"Warning: Validation failed for {impl_id} with error: {e}")
+                
+                results.append(result_row)
             
-            # Calculate statistics
-            mean_time = np.mean(times)
-            std_time = np.std(times)
+            finally:
+                # Clean up implementation
+                del impl
             
-            # Create result row with implementation options
-            result_row = {
-                'implementation': impl_name,
-                'mean_time (ms)': mean_time,
-                'std_time': std_time,
-                'min_time': np.min(times),
-                'max_time': np.max(times),
-                'm': self.m,
-                'n': self.n,
-                'k': self.k,
-                'dtype': self.dtype,
-                **impl_options  # Add implementation options to results
-            }
-            
-            # Validate results if requested
-            if self.validate:
-                try:
-                    impl.validate(result)
-                    result_row['valid'] = True
-                except Exception as e:
-                    result_row['valid'] = False
-                    print(f"Warning: Validation failed for {impl_name} with error: {e}")
-            
-            results.append(result_row)
+            # Force garbage collection to ensure cleanup
+            torch.cuda.empty_cache()
         
         return pd.DataFrame(results)
     
