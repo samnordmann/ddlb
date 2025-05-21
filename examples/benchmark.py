@@ -53,8 +53,8 @@ def run_benchmark(comm: Communicator, primitive: str, m: int, n: int, k: int, co
         implementations=implementations,
         dtype='float32',
         validate=True,
-        num_iterations=20,
-        num_warmups=5,
+        num_iterations=100,
+        num_warmups=10,
         implementation_options=implementation_options
     )
     results = runner.run()
