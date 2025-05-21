@@ -92,13 +92,13 @@ class TPColumnwise(ABC):
         Generate random matrices for the operation.
         Private method called during initialization.
         """
-        # Generate unsharded matrix A
-        self.A_unsharded = torch.randn(
+        # Generate unsharded matrix A with uniform distribution in [-1, 1]
+        self.A_unsharded = 2 * torch.rand(
             self.m,
             self.k,
             dtype=self.torch_dtype,
             device='cpu'
-        )
+        ) - 1
 
         # Shard A across GPUs
         chunk_size = self.k // self.communicator.world_size
@@ -106,13 +106,13 @@ class TPColumnwise(ABC):
         end_idx = start_idx + chunk_size if self.communicator.rank < self.communicator.world_size - 1 else self.k
         self.A = self.A_unsharded[:, start_idx:end_idx].to(self.communicator.device)
 
-        # Generate matrix B
-        self.B = torch.randn(
+        # Generate matrix B with uniform distribution in [-1, 1]
+        self.B = 2 * torch.rand(
             self.k,
             self.n,
             dtype=self.torch_dtype,
             device=self.communicator.device
-        )
+        ) - 1
     
     def get_inputs(self) -> Tuple[torch.Tensor, torch.Tensor]:
         """
@@ -135,17 +135,21 @@ class TPColumnwise(ABC):
         Raises:
             AssertionError: If the result doesn't match the reference computation
         """
-        # Only validate on rank 0
-        if self.communicator.rank != 0:
-            return True
-            
         # Compute reference result on a single GPU
         reference = torch.matmul(self.A_unsharded, self.B.detach().cpu())
-        
+
+        if self.torch_dtype in (torch.float16, torch.bfloat16):
+            atol = 1e-3
+        else:
+            atol = 1e-4
+        atol *= (self.k) # for accumulated error
+
+        print(f"Validating with atol: {atol}")
+
         # Compare results using torch.testing.assert_close
         assert_close(
             result.detach().cpu(),
             reference,
-            rtol=float('inf'),
-            atol=1e-1
+            rtol=0,
+            atol=atol
         )

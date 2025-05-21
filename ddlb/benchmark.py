@@ -132,10 +132,8 @@ class PrimitiveBenchmarkRunner:
             
             # Validate results if requested
             if self.validate:
-                is_valid = impl.validate(result)
-                results[-1]['valid'] = is_valid
-                if not is_valid:
-                    print(f"Warning: Validation failed for {impl_name}")
+                impl.validate(result)
+        
         
         return pd.DataFrame(results)
     
