@@ -23,7 +23,7 @@ def run_benchmark(comm, primitive, m, n, k):
         m=m,
         n=n,
         k=k,
-        implementations=['pytorch', 'reference_compute_only'],
+        implementations=['pytorch', 'compute_only'],
         dtype='float32',
         validate=True,
         num_iterations=5,

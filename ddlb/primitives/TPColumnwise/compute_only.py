@@ -5,7 +5,7 @@ Reference implementation that only performs the local matmul computation without
 import torch
 from .tp_columnwise import TPColumnwise
 
-class ReferenceComputeOnly(TPColumnwise):
+class ComputeOnlyTPColumnwise(TPColumnwise):
     """
     Reference implementation that only performs the local matmul computation without the allgather.
     """
