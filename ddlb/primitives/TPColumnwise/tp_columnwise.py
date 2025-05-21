@@ -144,8 +144,8 @@ class TPColumnwise(ABC):
             atol = 1e-4
         atol *= (self.k) # for accumulated error
 
-        if self.communicator.rank == 0:
-            print(f"Validating with atol: {atol}")
+        # if self.communicator.rank == 0:
+        #     print(f"Validating with atol: {atol}")
 
         # Compare results using torch.testing.assert_close
         assert_close(

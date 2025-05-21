@@ -69,6 +69,8 @@ def run_benchmark(comm: Communicator, primitive: str, m: int, n: int, k: int, co
         # Calculate TFLOPS (2 FLOPs per multiply-add)
         total_flops = 2 * m * n * k
         results['Throughput (TFLOPS)'] = total_flops / (results['mean_time (ms)'] * 1e9)
+        # compute the interval error as two times the standard deviation of the throughput
+        results['Throughput Interval error'] = 2 * total_flops * results['std_time'] / (results['mean_time (ms)']**2 * 1e9) 
         
         # Create a more readable implementation name that includes options
         def format_config(x):
@@ -80,6 +82,14 @@ def run_benchmark(comm: Communicator, primitive: str, m: int, n: int, k: int, co
             return impl
         
         results['config'] = results['implementation'].apply(format_config)
+        
+        # Format throughput with standard deviation
+        def format_throughput(row):
+            mean = round(row['Throughput (TFLOPS)'], 1)
+            error = round(row['Throughput Interval error'], 1)
+            return f"{mean} (±{error})"
+        
+        results['Throughput (TFLOPS)'] = results.apply(format_throughput, axis=1)
         
         # Display and plot results
         cols = ['config', 'Throughput (TFLOPS)', 'mean_time (ms)', 'std_time', 'min_time', 'max_time']

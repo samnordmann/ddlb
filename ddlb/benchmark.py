@@ -117,6 +117,8 @@ class PrimitiveBenchmarkRunner:
         comm = Communicator()
         
         for impl_id in tqdm(self.implementations, desc="Running benchmarks"):
+            if comm.rank == 0:
+                print(f"Running benchmark for {impl_id}")
             comm.barrier()
             torch.cuda.synchronize()
             # Create implementation instance
