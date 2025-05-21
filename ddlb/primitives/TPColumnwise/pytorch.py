@@ -13,8 +13,15 @@ class PyTorchTPColumnwise(TPColumnwise):
     Performs Allgather on A followed by matrix multiplication with B.
     """
     
+    DEFAULT_OPTIONS = {
+        'backend': 'nccl'  # Default backend
+    }
+    
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        
+        # Set backend from options or use default
+        self.backend = kwargs.get('backend', self.DEFAULT_OPTIONS['backend'])
         
         # Pre-allocate tensors for allgather
         self.A_gathered = [torch.empty_like(self.A) for _ in range(self.communicator.world_size)]
@@ -26,6 +33,10 @@ class PyTorchTPColumnwise(TPColumnwise):
         Returns:
             The result matrix of shape (m, n)
         """
+        # Print PyTorch configuration
+        print(f"\nPyTorch Configuration:")
+        print(f"  Backend: {self.backend}")
+        
         # Allgather A from all GPUs
         dist.all_gather(self.A_gathered, self.A)
         

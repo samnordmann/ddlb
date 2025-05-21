@@ -36,7 +36,7 @@ class PrimitiveBenchmarkRunner:
         validate: bool = True,
         num_iterations: int = 5,
         num_warmups: int = 2,
-        backend_params: Optional[Dict[str, Dict]] = None,
+        implementation_options: Optional[Dict[str, Dict]] = None,
     ):
         """
         Initialize the benchmark runner.
@@ -51,7 +51,7 @@ class PrimitiveBenchmarkRunner:
             validate: Whether to validate results
             num_iterations: Number of iterations for timing
             num_warmups: Number of warmup iterations
-            backend_params: Optional dictionary of backend-specific parameters
+            implementation_options: Optional dictionary of implementation-specific options
         """
         if primitive not in self.PRIMITIVES:
             raise ValueError(f"Unknown primitive: {primitive}")
@@ -65,21 +65,32 @@ class PrimitiveBenchmarkRunner:
         self.dtype = dtype
         self.validate = validate
         
-        # Validate implementations
+        # Validate implementations and merge options with defaults
         self.implementations = {}
-        for impl_name in implementations:
-            if impl_name not in self.IMPLEMENTATIONS:
-                raise ValueError(f"Unknown implementation: {impl_name}")
+        for impl_id in implementations:
+            # Extract base implementation name and options
+            if '_' in impl_id:
+                base_impl = '_'.join(impl_id.split('_')[:-1])
+                impl_options = implementation_options[impl_id]
+            else:
+                base_impl = impl_id
+                impl_options = implementation_options.get(impl_id, {})
             
-            # Get backend-specific parameters if provided
-            impl_params = backend_params.get(impl_name, {}) if backend_params else {}
+            if base_impl not in self.IMPLEMENTATIONS:
+                raise ValueError(f"Unknown implementation: {base_impl}")
             
-            self.implementations[impl_name] = self.IMPLEMENTATIONS[impl_name](
+            # Get implementation options, merging with class defaults
+            impl_class = self.IMPLEMENTATIONS[base_impl]
+            options = getattr(impl_class, 'DEFAULT_OPTIONS', {}).copy()
+            if impl_options:
+                options.update(impl_options)
+            
+            self.implementations[impl_id] = impl_class(
                 m=m,
                 n=n,
                 k=k,
                 dtype=dtype,
-                **impl_params
+                **options
             )
     
     def run(self) -> pd.DataFrame:
@@ -92,6 +103,10 @@ class PrimitiveBenchmarkRunner:
         results = []
         
         for impl_name, impl in tqdm(self.implementations.items(), desc="Running benchmarks"):
+            # Get implementation options for result tracking
+            impl_options = {k: v for k, v in impl.__dict__.items() 
+                          if k in getattr(impl, 'DEFAULT_OPTIONS', {})}
+            
             # Warmup runs
             for _ in range(self.num_warmups):
                 impl.run()
@@ -118,7 +133,8 @@ class PrimitiveBenchmarkRunner:
             mean_time = np.mean(times)
             std_time = np.std(times)
             
-            results.append({
+            # Create result row with implementation options
+            result_row = {
                 'implementation': impl_name,
                 'mean_time (ms)': mean_time,
                 'std_time': std_time,
@@ -128,12 +144,19 @@ class PrimitiveBenchmarkRunner:
                 'n': self.n,
                 'k': self.k,
                 'dtype': self.dtype,
-            })
+                **impl_options  # Add implementation options to results
+            }
             
             # Validate results if requested
             if self.validate:
-                impl.validate(result)
-        
+                try:
+                    impl.validate(result)
+                    result_row['valid'] = True
+                except Exception as e:
+                    result_row['valid'] = False
+                    print(f"Warning: Validation failed for {impl_name} with error: {e}")
+            
+            results.append(result_row)
         
         return pd.DataFrame(results)
     
@@ -149,14 +172,27 @@ class PrimitiveBenchmarkRunner:
         
         plt.figure(figsize=(12, 6))
         
+        # Create labels that include implementation options
+        labels = []
+        for _, row in results.iterrows():
+            impl = row['implementation']
+            base_impl = '_'.join(impl.split('_')[:-1]) if '_' in impl else impl
+            impl_class = self.IMPLEMENTATIONS[base_impl]
+            class_options = getattr(impl_class, 'DEFAULT_OPTIONS', {})
+            options = {k: v for k, v in row.items() if k in class_options}
+            label = f"{impl}"
+            if options:
+                label += f" ({', '.join(f'{k}={v}' for k, v in options.items())})"
+            labels.append(label)
+        
         # Plot mean times with error bars
-        plt.bar(results['implementation'], results['mean_time (ms)'], 
+        plt.bar(labels, results['mean_time (ms)'], 
                 yerr=results['std_time'], capsize=5)
         
         plt.title(f'{self.primitive.upper()} Benchmark\n'
                  f'Size: ({self.m},{self.n},{self.k}), '
                  f'Dtype: {self.dtype}')
-        plt.ylabel('Time (seconds)')
+        plt.ylabel('Time (ms)')
         plt.xticks(rotation=45)
         plt.tight_layout()
         plt.show() 

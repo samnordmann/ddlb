@@ -1,0 +1,13 @@
+{
+    "pytorch": [
+        {
+            "backend": "nccl"
+        },
+        {
+            "backend": "ucc"
+        }
+    ],
+    "compute_only": [
+        {}
+    ]
+} 
