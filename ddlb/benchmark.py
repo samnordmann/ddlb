@@ -14,6 +14,12 @@ from .primitives import TPColumnwise
 from .primitives.TPColumnwise import PyTorchTPColumnwise, ComputeOnlyTPColumnwise, FuserTPColumnwise
 from .communicator import Communicator
 
+# Configure pandas to display full output
+pd.set_option('display.max_columns', None)
+pd.set_option('display.width', None)
+pd.set_option('display.max_rows', None)
+pd.set_option('display.max_colwidth', None)
+
 class PrimitiveBenchmarkRunner:
     """Main class for running distributed primitive benchmarks."""
     
@@ -134,7 +140,8 @@ class PrimitiveBenchmarkRunner:
                               if k in getattr(impl, 'DEFAULT_OPTIONS', {})}
                 
                 # Warmup runs
-                for _ in range(self.num_warmups):
+                warmup_inner_iter = tqdm(range(self.num_warmups), desc=f"Warming up {impl_id}", leave=False, position=1) if comm.rank == 0 else range(self.num_warmups)
+                for _ in warmup_inner_iter:
                     impl.run()
                 
                 # Create CUDA events for timing
@@ -190,7 +197,16 @@ class PrimitiveBenchmarkRunner:
             # Force garbage collection to ensure cleanup
             torch.cuda.empty_cache()
         
-        return pd.DataFrame(results)
+        # Create DataFrame and sort by mean time
+        df = pd.DataFrame(results)
+        df = df.sort_values('mean_time (ms)')
+        
+        # Print detailed results on rank 0
+        if comm.rank == 0:
+            print("\nDetailed Results:")
+            print(df.to_string())
+        
+        return df
     
     def plot_results(self, results: Optional[pd.DataFrame] = None) -> None:
         """
