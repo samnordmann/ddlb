@@ -43,10 +43,17 @@ class TPColumnwise(ABC):
             dtype: Data type for the matrices ('float32', 'float64', etc.)
             seed: Random seed for reproducibility
         """
+        # Initialize communicator
+        self.communicator = Communicator()
+
         self.m = m
         self.n = n
         self.k = k
-        
+        # Assert that m is divisible by world_size for even sharding
+        if m % self.communicator.world_size != 0:
+            raise ValueError(
+                f"Matrix dimension m ({m}) must be divisible by world_size ({self.communicator.world_size})"
+            )
         # Set random seed for reproducibility
         torch.manual_seed(seed)
         if torch.cuda.is_available():
@@ -66,9 +73,6 @@ class TPColumnwise(ABC):
             
         self.dtype = dtype
         self.torch_dtype = dtype_map[dtype]
-        
-        # Initialize communicator
-        self.communicator = Communicator()
         
         # Initialize matrices
         self.A_unsharded = None

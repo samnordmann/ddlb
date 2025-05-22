@@ -34,7 +34,7 @@ class AgMatmulFusion(FusionDefinition):
             shape=[d, m // d, k], contiguity=True, dtype=torch_dtype_to_nvfuser_dtype(self.dtype)
         )
         self.B = self.define_tensor(
-            shape=[n, k], contiguity=True, dtype=torch_dtype_to_nvfuser_dtype(self.dtype)
+            shape=[k, n], contiguity=True, dtype=torch_dtype_to_nvfuser_dtype(self.dtype)
         )
 
         self.C = self.ops.matmul(
