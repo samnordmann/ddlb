@@ -9,6 +9,7 @@ from nvfuser import DataType, FusionDefinition, CommunicatorBackend, DeviceMesh,
 from nvfuser.pytorch_utils import torch_dtype_to_nvfuser_dtype
 
 from .tp_columnwise import TPColumnwise
+from .utils import EnvVarGuard, setup_ucc_env_vars
 
 
 class AgMatmulFusion(FusionDefinition):
@@ -77,10 +78,8 @@ class FuserTPColumnwise(TPColumnwise):
         # Parse backend configuration
         backend = kwargs.get('backend', self.DEFAULT_OPTIONS['backend'])
         
-        self.env_vars = {}
         if backend.startswith('ucc/tl/'):
             self.tl = backend.split('/')[-1]
-            self.env_vars["UCC_CL_BASIC_TLS"] = self.tl
             self.backend = 'ucc'
         else:
             if backend not in ['ucc', 'nccl']:
@@ -88,32 +87,16 @@ class FuserTPColumnwise(TPColumnwise):
             self.backend = backend
             self.tl = None
         
-        if self.backend == 'ucc':
-            self.env_vars["UCX_RNDV_THRESH"] = "0"
-            self.env_vars["UCX_TLS"] = "ib,cuda_copy"
-
-        # Set environment variables
-        for key, value in self.env_vars.items():
-            os.environ[key] = value
+        # Set up environment variables
+        self.env_guard = EnvVarGuard(setup_ucc_env_vars(backend))
     
         # Get allgather order
         self.order = kwargs.get('order', self.DEFAULT_OPTIONS['order'])
         if self.order not in ['AG_before']:
             raise ValueError(f"Invalid order: {self.order}. Must be 'AG_before' or 'AG_after'")
         
-        # # Get fusion strategy
-        # self.fusion_strategy = kwargs.get('fusion_strategy', self.DEFAULT_OPTIONS['fusion_strategy'])
-        
-        
         # Initialize fusion definition
         self.fusion = AgMatmulFusion(self.torch_dtype, self.m, self.k, self.n, self.communicator.world_size, CommunicatorBackend.nccl)
-    
-    def __del__(self):
-        """Clean up process group and environment variables."""
-        # Reset environment variables
-        for key in self.env_vars:
-            if key in os.environ:
-                del os.environ[key]
     
     def run(self) -> torch.Tensor:
         """

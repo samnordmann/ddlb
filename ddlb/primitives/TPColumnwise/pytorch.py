@@ -7,6 +7,7 @@ import torch
 import torch.distributed as dist
 
 from .tp_columnwise import TPColumnwise
+from .utils import EnvVarGuard, setup_ucc_env_vars
 
 class PyTorchTPColumnwise(TPColumnwise):
     """
@@ -32,11 +33,8 @@ class PyTorchTPColumnwise(TPColumnwise):
         # Parse backend configuration
         backend = kwargs.get('backend', self.DEFAULT_OPTIONS['backend'])
         
-
-        self.env_vars = {}
         if backend.startswith('ucc/tl/'):
             self.tl = backend.split('/')[-1]
-            self.env_vars["UCC_CL_BASIC_TLS"] = self.tl
             self.backend = 'ucc'
         else:
             if backend not in ['ucc', 'nccl']:
@@ -44,13 +42,8 @@ class PyTorchTPColumnwise(TPColumnwise):
             self.backend = backend
             self.tl = None
         
-        if self.backend == 'ucc':
-            self.env_vars["UCX_RNDV_THRESH"] = "0"
-            self.env_vars["UCX_TLS"] = "ib,cuda_copy"
-
-        # Set environment variables
-        for key, value in self.env_vars.items():
-            os.environ[key] = value
+        # Set up environment variables
+        self.env_guard = EnvVarGuard(setup_ucc_env_vars(backend))
     
         # Get allgather order
         self.order = kwargs.get('order', self.DEFAULT_OPTIONS['order'])
@@ -60,7 +53,7 @@ class PyTorchTPColumnwise(TPColumnwise):
         # Initialize process group and allocate tensors
         ranks = list(range(self.communicator.world_size))
         self.pg = dist.new_group(ranks=ranks, backend=self.backend, device_id=self.communicator.device)
-        
+
         if self.order == 'AG_before':
             # For AG_before, we need space for the full A matrix
             self.A_gathered = torch.empty(
@@ -79,12 +72,7 @@ class PyTorchTPColumnwise(TPColumnwise):
             )
     
     def __del__(self):
-        """Clean up process group and environment variables."""
-        # Reset environment variables
-        for key in self.env_vars:
-            if key in os.environ:
-                del os.environ[key]
-        
+        """Clean up process group"""
         if hasattr(self, 'pg'):
             dist.barrier()
             dist.destroy_process_group(self.pg)
