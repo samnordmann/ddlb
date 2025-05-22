@@ -9,6 +9,11 @@
         "num_iterations": 50,
         "num_warmups": 5,
         "implementations": {
+            "fuser": [
+                {
+                    "order": ["AG_before"]
+                }
+            ],
             "compute_only": [
                 {
                     "size": "unsharded"
@@ -18,13 +23,6 @@
                 {
                     "backend": ["nccl", "ucc/tl/nccl", "ucc/tl/cuda", "ucc/tl/ucp"],
                     "order": ["AG_before", "AG_after"]
-                }
-            ],
-            "fuser": [
-                {
-                    "backend": ["nccl", "ucc/tl/nccl", "ucc/tl/cuda"],
-                    "order": ["AG_before", "AG_after"],
-                    "fusion_strategy": "aggressive"
                 }
             ]
         }

@@ -59,7 +59,7 @@ class PyTorchTPColumnwise(TPColumnwise):
         
         # Initialize process group and allocate tensors
         ranks = list(range(self.communicator.world_size))
-        self.pg = dist.new_group(ranks=ranks, backend=self.backend)
+        self.pg = dist.new_group(ranks=ranks, backend=self.backend, device_id=self.communicator.device)
         
         if self.order == 'AG_before':
             # For AG_before, we need space for the full A matrix
@@ -87,6 +87,7 @@ class PyTorchTPColumnwise(TPColumnwise):
         
         if hasattr(self, 'pg'):
             dist.destroy_process_group(self.pg)
+            dist.barrier()
     
     def run(self) -> torch.Tensor:
         """

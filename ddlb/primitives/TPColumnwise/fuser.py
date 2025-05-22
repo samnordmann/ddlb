@@ -5,9 +5,54 @@ nvFuser implementation of TP Column-wise primitive
 import os
 import torch
 import torch.distributed as dist
-from nvfuser import FusionDefinition
+from nvfuser import DataType, FusionDefinition, CommunicatorBackend, DeviceMesh, ParallelType
+from nvfuser.pytorch_utils import torch_dtype_to_nvfuser_dtype
 
 from .tp_columnwise import TPColumnwise
+
+
+class AgMatmulFusion(FusionDefinition):
+    def __init__(self, dtype, m, k, n, num_devices, communication_backend):
+        super().__init__(
+            use_multidevice_executor=True, backend_type=communication_backend
+        )
+        self.m = m
+        self.k = k
+        self.n = n
+        self._num_devices = num_devices
+        self.dtype = dtype
+
+    def definition(self) -> None:
+        m, k, n, d = (
+            self.m,
+            self.k,
+            self.n,
+            self._num_devices,
+        )
+        self.A = self.define_tensor(
+            shape=[d, m // d, k], contiguity=True, dtype=torch_dtype_to_nvfuser_dtype(self.dtype)
+        )
+        self.B = self.define_tensor(
+            shape=[n, k], contiguity=True, dtype=torch_dtype_to_nvfuser_dtype(self.dtype)
+        )
+
+        self.C = self.ops.matmul(
+            self.A, self.B
+        ) 
+
+        self.add_output(self.C)
+
+    def multidevice_schedule(self):
+        mesh = DeviceMesh(range(self._num_devices))
+        for tv in [
+            self.A,
+            self.B,
+            self.C,
+        ]:
+            self.sched._set_device_mesh(tv, mesh)
+
+        self.sched.parallelize(self.A, 0, ParallelType.mesh_x)
+
 
 class FuserTPColumnwise(TPColumnwise):
     """
@@ -53,36 +98,15 @@ class FuserTPColumnwise(TPColumnwise):
     
         # Get allgather order
         self.order = kwargs.get('order', self.DEFAULT_OPTIONS['order'])
-        if self.order not in ['AG_before', 'AG_after']:
+        if self.order not in ['AG_before']:
             raise ValueError(f"Invalid order: {self.order}. Must be 'AG_before' or 'AG_after'")
         
-        # Get fusion strategy
-        self.fusion_strategy = kwargs.get('fusion_strategy', self.DEFAULT_OPTIONS['fusion_strategy'])
+        # # Get fusion strategy
+        # self.fusion_strategy = kwargs.get('fusion_strategy', self.DEFAULT_OPTIONS['fusion_strategy'])
         
-        # Initialize process group
-        ranks = list(range(self.communicator.world_size))
-        self.pg = dist.new_group(ranks=ranks, backend=self.backend)
         
         # Initialize fusion definition
-        self.fusion = None
-        self._setup_fusion()
-        
-        if self.order == 'AG_before':
-            # For AG_before, we need space for the full A matrix
-            self.A_gathered = torch.empty(
-                self.m,
-                self.k,
-                dtype=self.A.dtype,
-                device=self.A.device
-            )
-        else:
-            # For AG_after, we need space for the full result matrix
-            self.result_gathered = torch.empty(
-                self.m,
-                self.n,
-                dtype=self.A.dtype,
-                device=self.A.device
-            )
+        self.fusion = AgMatmulFusion(self.torch_dtype, self.m, self.k, self.n, self.communicator.world_size, CommunicatorBackend.nccl)
     
     def __del__(self):
         """Clean up process group and environment variables."""
@@ -90,33 +114,6 @@ class FuserTPColumnwise(TPColumnwise):
         for key in self.env_vars:
             if key in os.environ:
                 del os.environ[key]
-        
-        if hasattr(self, 'pg'):
-            dist.destroy_process_group(self.pg)
-    
-    def _setup_fusion(self):
-        """
-        Set up the nvFuser fusion definition for matrix multiplication.
-        This creates the fusion graph that will be used for the computation.
-        """
-        with FusionDefinition() as fd:
-            # Define inputs
-            t0 = fd.define_tensor(
-                shape=[self.m, self.k],
-                dtype=self.torch_dtype
-            )
-            t1 = fd.define_tensor(
-                shape=[self.k, self.n],
-                dtype=self.torch_dtype
-            )
-            
-            # Define the matrix multiplication operation
-            t2 = fd.ops.matmul(t0, t1)
-            
-            # Define outputs
-            fd.add_output(t2)
-        
-        self.fusion = fd
     
     def run(self) -> torch.Tensor:
         """
@@ -125,9 +122,8 @@ class FuserTPColumnwise(TPColumnwise):
         Returns:
             torch.Tensor: Result matrix of shape (m, n)
         """
-        # TODO: Implement the run function using nvFuser
-        # This should:
-        # 1. Handle the allgather operation (before or after matmul)
-        # 2. Use the fusion definition for the matrix multiplication
-        # 3. Handle synchronization and barriers
-        pass 
+        A, B = self.get_inputs()
+        A = A.unsqueeze(0)
+        C = self.fusion.execute([A, B])[0][0]
+        C = C.reshape(C.shape[0] * C.shape[1], C.shape[2])
+        return C
