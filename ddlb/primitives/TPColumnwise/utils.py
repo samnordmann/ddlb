@@ -37,6 +37,9 @@ class OptionsManager:
     Handles parsing, validation, and storage of options.
     """
     
+    # Options that are used by the benchmark runner but not by implementations
+    BENCHMARK_OPTIONS = {'implementation'}
+    
     def __init__(self, default_options: Dict[str, Any], allowed_values: Dict[str, List[Any]] = None):
         """
         Initialize the options manager.
@@ -55,9 +58,26 @@ class OptionsManager:
         
         Args:
             kwargs: Dictionary of options to parse
+            
+        Raises:
+            ValueError: If an unknown option is provided or if a value is not allowed
         """
+        # Filter out benchmark-specific options
+        implementation_options = {
+            k: v for k, v in kwargs.items() 
+            if k not in self.BENCHMARK_OPTIONS
+        }
+        
+        # Check for unknown options
+        unknown_options = set(implementation_options.keys()) - set(self.default_options.keys())
+        if unknown_options:
+            raise ValueError(
+                f"Unknown options provided: {unknown_options}. "
+                f"Valid options are: {list(self.default_options.keys())}"
+            )
+        
         # Update options with provided values
-        self.options.update(kwargs)
+        self.options.update(implementation_options)
         
         # Validate options against allowed values
         for option, allowed in self.allowed_values.items():
