@@ -1,9 +1,9 @@
 {
     "benchmark": {
         "primitive": "tp_columnwise",
-        "m": 65536,
-        "n": 4096,
-        "k": 4096,
+        "m": 1024,
+        "n": 1024,
+        "k": 1024,
         "dtype": "float32",
         "validate": true,
         "num_iterations": 20,

@@ -45,11 +45,6 @@ class PyTorchTPColumnwise(TPColumnwise):
             self.backend = backend
             self.tl = None
         
-        if backend == 'nccl':
-            # Do a dummy allreduce to avoid hang later
-            dummy = torch.ones(1, device=self.communicator.device)
-            dist.all_reduce(dummy)
-
         # Set up environment variables
         self.env_guard = EnvVarGuard(setup_ucc_env_vars(backend))
     
