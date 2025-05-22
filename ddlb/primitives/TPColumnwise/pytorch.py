@@ -86,6 +86,7 @@ class PyTorchTPColumnwise(TPColumnwise):
                 del os.environ[key]
         
         if hasattr(self, 'pg'):
+            dist.barrier()
             dist.destroy_process_group(self.pg)
             dist.barrier()
     
