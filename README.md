@@ -23,7 +23,13 @@ pip install -e .
 ```
 .
 ├── README.md
-├── config.json
+├── LICENSE
+├── CONTRIBUTING.md
+├── CHANGELOG.md
+├── requirements.txt
+├── requirements-dev.txt
+├── pyproject.toml
+├── Makefile
 ├── ddlb/
 │   ├── __init__.py
 │   ├── benchmark.py
@@ -37,13 +43,20 @@ pip install -e .
 │           ├── pytorch_tp_columnwise.py
 │           ├── compute_only_tp_columnwise.py
 │           └── reference_tp_columnwise.py
-└── scripts/
-    └── run_benchmark.py
+├── scripts/
+│   ├── run_benchmark.py
+│   └── config.json
+├── tests/
+│   └── __init__.py
+└── docs/
+    └── source/
+        ├── conf.py
+        └── index.rst
 ```
 
 ## Configuration
 
-All benchmark parameters and implementation options are specified in `config.json` at the project root. Example:
+All benchmark parameters and implementation options are specified in `scripts/config.json`. Example:
 
 ```json
 {
@@ -85,13 +98,19 @@ mpirun -np 2 python scripts/run_benchmark.py
 - Replace `2` with the number of processes/GPUs you want to use.
 - Make sure your environment is set up for MPI and CUDA.
 
-**Directly (for single-process debugging):**
-
-```bash
-python scripts/run_benchmark.py
-```
 
 ### Output
 - Results and progress are printed to the console.
 - Only rank 0 prints and plots results.
-- If a backend is not supported, you may see errors or crashes—edit `config.json` to remove problematic backends.
+- If a backend is not supported, you may see errors or crashes—edit `scripts/config.json` to remove problematic backends.
+
+## Troubleshooting
+
+- **MPI errors:** Always use `mpirun` or `mpiexec` to launch the script for distributed runs.
+- **UCX/InfiniBand errors:** If you see errors about missing UCX transports or segmentation faults, remove `ucc/tl/ucp` from your config.
+- **Import errors:** Ensure you have installed the package in development mode: `pip install -e .`
+- **CUDA errors:** Make sure your CUDA environment is set up and visible to all MPI processes.
+
+## License
+
+MIT

@@ -1,0 +1,106 @@
+# Lintrunner configuration file
+# This file configures the linting tools used in the project
+
+# Python linters
+[[linter]]
+name = "black"
+code = "BLACK"
+command = ["black", "--check", "{path}"]
+include_patterns = ["*.py"]
+exclude_patterns = ["build/*", "dist/*", "*.egg-info/*"]
+
+[[linter]]
+name = "isort"
+code = "ISORT"
+command = ["isort", "--check-only", "{path}"]
+include_patterns = ["*.py"]
+exclude_patterns = ["build/*", "dist/*", "*.egg-info/*"]
+
+[[linter]]
+name = "flake8"
+code = "FLAKE8"
+command = ["flake8", "{path}"]
+include_patterns = ["*.py"]
+exclude_patterns = ["build/*", "dist/*", "*.egg-info/*"]
+args = [
+    "--max-line-length=100",
+    "--extend-ignore=E203,W503",
+    "--per-file-ignores=__init__.py:F401"
+]
+
+[[linter]]
+name = "mypy"
+code = "MYPY"
+command = ["mypy", "{path}"]
+include_patterns = ["*.py"]
+exclude_patterns = ["build/*", "dist/*", "*.egg-info/*"]
+args = [
+    "--ignore-missing-imports",
+    "--disallow-untyped-defs",
+    "--disallow-incomplete-defs",
+    "--check-untyped-defs",
+    "--disallow-untyped-decorators",
+    "--no-implicit-optional",
+    "--warn-redundant-casts",
+    "--warn-unused-ignores",
+    "--warn-return-any",
+    "--warn-unreachable"
+]
+
+# Documentation linters
+[[linter]]
+name = "pydocstyle"
+code = "PYDOCSTYLE"
+command = ["pydocstyle", "{path}"]
+include_patterns = ["*.py"]
+exclude_patterns = ["build/*", "dist/*", "*.egg-info/*", "tests/*"]
+args = [
+    "--convention=google",
+    "--add-ignore=D100,D104,D107,D203,D213,D406,D407,D413"
+]
+
+# Security linters
+[[linter]]
+name = "bandit"
+code = "BANDIT"
+command = ["bandit", "-r", "{path}"]
+include_patterns = ["*.py"]
+exclude_patterns = ["build/*", "dist/*", "*.egg-info/*", "tests/*"]
+args = [
+    "-c", "pyproject.toml",
+    "-f", "json",
+    "-ll"
+]
+
+# Test coverage
+[[linter]]
+name = "pytest-cov"
+code = "PYTEST-COV"
+command = ["pytest", "--cov={path}", "--cov-report=term-missing"]
+include_patterns = ["tests/*.py"]
+exclude_patterns = ["build/*", "dist/*", "*.egg-info/*"]
+
+# Trailing whitespace linter
+[[linter]]
+name = "trailing-whitespace"
+code = "TRAILING-WHITESPACE"
+command = ["sed", "-i", "s/[[:space:]]*$//", "{path}"]
+include_patterns = ["*.py", "*.md", "*.txt", "*.toml", "*.json"]
+exclude_patterns = ["build/*", "dist/*", "*.egg-info/*"]
+
+# Custom configurations
+[settings]
+# Maximum number of parallel linters
+max_workers = 4
+
+# Timeout for each linter in seconds
+timeout = 300
+
+# Whether to show progress bars
+show_progress = true
+
+# Whether to show linter output
+show_output = true
+
+# Whether to fail on first error
+fail_fast = false 

@@ -8,7 +8,7 @@ from ddlb.communicator import Communicator
 
 def main():
     """Main entry point for the benchmark script."""
-    config_path = 'config.json'
+    config_path = 'scripts/config.json'
 
     # Load configuration from JSON file
     try:
