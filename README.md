@@ -15,10 +15,6 @@ A library for benchmarking distributed deep learning primitives and operations a
 ## Installation
 
 ```bash
-pip install ddlb
-```
-or 
-```
 pip install -e .
 ```
 ## Usage

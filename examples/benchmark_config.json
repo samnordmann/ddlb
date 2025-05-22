@@ -1,9 +1,6 @@
 {
     "compute_only": [
         {
-            "size": "sharded"
-        },
-        {
             "size": "unsharded"
         }
     ],
@@ -24,11 +21,6 @@
         },
         {
             "backend": "ucc/tl/ucp",
-            "order": "AG_before"
-        },
-        {
-            "backend": "ucc/tl/ucp",
-            "order": "AG_after"
         }
     ]
 } 

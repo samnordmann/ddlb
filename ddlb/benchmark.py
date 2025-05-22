@@ -116,7 +116,10 @@ class PrimitiveBenchmarkRunner:
         results = []
         comm = Communicator()
         
-        for impl_id in tqdm(self.implementations, desc="Running benchmarks"):
+        # Only show progress bars on rank 0
+        outer_iter = tqdm(self.implementations, desc="Running benchmarks", position=0) if comm.rank == 0 else self.implementations
+        
+        for impl_id in outer_iter:
             if comm.rank == 0:
                 print(f"Running benchmark for {impl_id}")
             comm.barrier()
@@ -139,7 +142,8 @@ class PrimitiveBenchmarkRunner:
                 
                 # Actual benchmark runs
                 times = []
-                for _ in range(self.num_iterations):
+                inner_iter = tqdm(range(self.num_iterations), desc=f"Running {impl_id}", leave=False, position=1) if comm.rank == 0 else range(self.num_iterations)
+                for _ in inner_iter:
                     start_event.record()
                     result = impl.run()
                     end_event.record()

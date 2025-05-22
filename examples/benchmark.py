@@ -101,11 +101,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description='Run distributed primitive benchmarks')
     parser.add_argument('--primitive', type=str, default='tp_columnwise',
                       help='Primitive to benchmark (currently only tp_columnwise supported)')
-    parser.add_argument('--m', type=int, default=8192, 
+    parser.add_argument('--m', type=int, default=2**16, 
                       help='Number of rows in first matrix')
-    parser.add_argument('--n', type=int, default=4096, 
+    parser.add_argument('--n', type=int, default=2**10, 
                       help='Number of columns in second matrix')
-    parser.add_argument('--k', type=int, default=8192, 
+    parser.add_argument('--k', type=int, default=2**10, 
                       help='Number of columns in first matrix / rows in second matrix')
     parser.add_argument('--config', type=str, default='examples/benchmark_config.json',
                       help='Path to JSON configuration file')
@@ -122,7 +122,6 @@ def main() -> None:
     # Initialize communicator and run benchmark
     comm = Communicator()
     run_benchmark(comm, args.primitive, args.m, args.n, args.k, config)
-    del comm
 
 if __name__ == '__main__':
     main() 

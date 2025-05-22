@@ -32,9 +32,11 @@ class PyTorchTPColumnwise(TPColumnwise):
         # Parse backend configuration
         backend = kwargs.get('backend', self.DEFAULT_OPTIONS['backend'])
         
+
+        self.env_vars = {}
         if backend.startswith('ucc/tl/'):
             self.tl = backend.split('/')[-1]
-            os.environ["UCC_CL_BASIC_TLS"] = self.tl
+            self.env_vars["UCC_CL_BASIC_TLS"] = self.tl
             self.backend = 'ucc'
         else:
             if backend not in ['ucc', 'nccl']:
@@ -42,6 +44,14 @@ class PyTorchTPColumnwise(TPColumnwise):
             self.backend = backend
             self.tl = None
         
+        if self.backend == 'ucc':
+            self.env_vars["UCX_RNDV_THRESH"] = "0"
+            self.env_vars["UCX_TLS"] = "ib,cuda_copy"
+
+        # Set environment variables
+        for key, value in self.env_vars.items():
+            os.environ[key] = value
+    
         # Get allgather order
         self.order = kwargs.get('order', self.DEFAULT_OPTIONS['order'])
         if self.order not in ['AG_before', 'AG_after']:
@@ -70,8 +80,10 @@ class PyTorchTPColumnwise(TPColumnwise):
     
     def __del__(self):
         """Clean up process group and environment variables."""
-        if self.tl is not None and "UCC_CL_BASIC_TLS" in os.environ:
-            del os.environ["UCC_CL_BASIC_TLS"]
+        # Reset environment variables
+        for key in self.env_vars:
+            if key in os.environ:
+                del os.environ[key]
         
         if hasattr(self, 'pg'):
             dist.destroy_process_group(self.pg)

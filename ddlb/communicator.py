@@ -1,6 +1,8 @@
 import os
+import time
 import torch
 import torch.distributed as dist
+from mpi4py import MPI
 
 class Communicator:
     """
@@ -90,11 +92,8 @@ class Communicator:
         This ensures proper cleanup of distributed resources when the communicator is destroyed.
         """
         if dist.is_initialized():
-            # https://github.com/pytorch/pytorch/issues/123969
-            dist.barrier()
-            if self.rank == 0:
-                time.sleep(2)
             dist.destroy_process_group()
+        MPI.COMM_WORLD.Barrier()
 
     def barrier(self):
         """
