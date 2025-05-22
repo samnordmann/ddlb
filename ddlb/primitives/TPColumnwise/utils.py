@@ -3,7 +3,7 @@ Utility functions and classes for TP Column-wise implementations
 """
 
 import os
-from typing import Dict, Optional
+from typing import Dict, Optional, Any, List, Union
 
 
 class EnvVarGuard:
@@ -29,6 +29,53 @@ class EnvVarGuard:
                     del os.environ[key]
                 else:
                     os.environ[key] = self._original_values[key]
+
+
+class OptionsManager:
+    """
+    Manages options for TP Column-wise implementations.
+    Handles parsing, validation, and storage of options.
+    """
+    
+    def __init__(self, default_options: Dict[str, Any], allowed_values: Dict[str, List[Any]] = None):
+        """
+        Initialize the options manager.
+        
+        Args:
+            default_options: Dictionary of default option values
+            allowed_values: Dictionary mapping option names to lists of allowed values
+        """
+        self.default_options = default_options.copy()
+        self.allowed_values = allowed_values or {}
+        self.options = self.default_options.copy()
+    
+    def parse(self, kwargs: Dict[str, Any]) -> None:
+        """
+        Parse and validate options from kwargs.
+        
+        Args:
+            kwargs: Dictionary of options to parse
+        """
+        # Update options with provided values
+        self.options.update(kwargs)
+        
+        # Validate options against allowed values
+        for option, allowed in self.allowed_values.items():
+            if option in self.options:
+                value = self.options[option]
+                if value not in allowed:
+                    raise ValueError(
+                        f"Invalid value for {option}: {value}. "
+                        f"Must be one of {allowed}"
+                    )
+    
+    def get(self, key: str, default: Any = None) -> Any:
+        """Get an option value."""
+        return self.options.get(key, default)
+    
+    def __getitem__(self, key: str) -> Any:
+        """Get an option value using dictionary syntax."""
+        return self.options[key]
 
 
 def setup_ucc_env_vars(backend: str) -> Dict[str, str]:

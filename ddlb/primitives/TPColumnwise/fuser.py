@@ -9,7 +9,7 @@ from nvfuser import DataType, FusionDefinition, CommunicatorBackend, DeviceMesh,
 from nvfuser.pytorch_utils import torch_dtype_to_nvfuser_dtype
 
 from .tp_columnwise import TPColumnwise
-from .utils import EnvVarGuard, setup_ucc_env_vars
+from .utils import EnvVarGuard, setup_ucc_env_vars, OptionsManager
 
 
 class AgMatmulFusion(FusionDefinition):
@@ -72,18 +72,25 @@ class FuserTPColumnwise(TPColumnwise):
         'fusion_strategy': 'aggressive'  # Fusion strategy for nvFuser
     }
     
+    ALLOWED_VALUES = {
+        'backend': ['nccl', 'ucc', 'ucc/tl/nccl', 'ucc/tl/cuda'],
+        'order': ['AG_before']
+    }
+    
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         
+        # Initialize options manager
+        self.options = OptionsManager(self.DEFAULT_OPTIONS, self.ALLOWED_VALUES)
+        self.options.parse(kwargs)
+        
         # Parse backend configuration
-        backend = kwargs.get('backend', self.DEFAULT_OPTIONS['backend'])
+        backend = self.options['backend']
         
         if backend.startswith('ucc/tl/'):
             self.tl = backend.split('/')[-1]
             self.backend = 'ucc'
         else:
-            if backend not in ['ucc', 'nccl']:
-                raise ValueError(f"Invalid backend: {backend}. Must be 'ucc' or 'nccl'")
             self.backend = backend
             self.tl = None
         
@@ -91,9 +98,7 @@ class FuserTPColumnwise(TPColumnwise):
         self.env_guard = EnvVarGuard(setup_ucc_env_vars(backend))
     
         # Get allgather order
-        self.order = kwargs.get('order', self.DEFAULT_OPTIONS['order'])
-        if self.order not in ['AG_before']:
-            raise ValueError(f"Invalid order: {self.order}. Must be 'AG_before' or 'AG_after'")
+        self.order = self.options['order']
         
         # Initialize fusion definition
         self.fusion = AgMatmulFusion(self.torch_dtype, self.m, self.k, self.n, self.communicator.world_size, CommunicatorBackend.nccl)

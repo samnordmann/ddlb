@@ -7,7 +7,7 @@ import torch
 import torch.distributed as dist
 
 from .tp_columnwise import TPColumnwise
-from .utils import EnvVarGuard, setup_ucc_env_vars
+from .utils import EnvVarGuard, setup_ucc_env_vars, OptionsManager
 
 class PyTorchTPColumnwise(TPColumnwise):
     """
@@ -27,18 +27,25 @@ class PyTorchTPColumnwise(TPColumnwise):
         'order': 'AG_before'  # Default order
     }
     
+    ALLOWED_VALUES = {
+        'backend': ['nccl', 'ucc', 'ucc/tl/nccl', 'ucc/tl/cuda', 'ucc/tl/ucp'],
+        'order': ['AG_before', 'AG_after']
+    }
+    
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         
+        # Initialize options manager
+        self.options = OptionsManager(self.DEFAULT_OPTIONS, self.ALLOWED_VALUES)
+        self.options.parse(kwargs)
+        
         # Parse backend configuration
-        backend = kwargs.get('backend', self.DEFAULT_OPTIONS['backend'])
+        backend = self.options['backend']
         
         if backend.startswith('ucc/tl/'):
             self.tl = backend.split('/')[-1]
             self.backend = 'ucc'
         else:
-            if backend not in ['ucc', 'nccl']:
-                raise ValueError(f"Invalid backend: {backend}. Must be 'ucc' or 'nccl'")
             self.backend = backend
             self.tl = None
         
@@ -46,9 +53,7 @@ class PyTorchTPColumnwise(TPColumnwise):
         self.env_guard = EnvVarGuard(setup_ucc_env_vars(backend))
     
         # Get allgather order
-        self.order = kwargs.get('order', self.DEFAULT_OPTIONS['order'])
-        if self.order not in ['AG_before', 'AG_after']:
-            raise ValueError(f"Invalid order: {self.order}. Must be 'AG_before' or 'AG_after'")
+        self.order = self.options['order']
         
         # Initialize process group and allocate tensors
         ranks = list(range(self.communicator.world_size))

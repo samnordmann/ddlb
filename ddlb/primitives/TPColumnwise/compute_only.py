@@ -4,6 +4,7 @@ Reference implementation that only performs the local matmul computation without
 
 import torch
 from .tp_columnwise import TPColumnwise
+from .utils import OptionsManager
 
 class ComputeOnlyTPColumnwise(TPColumnwise):
     """
@@ -14,14 +15,18 @@ class ComputeOnlyTPColumnwise(TPColumnwise):
         'size': 'sharded',  # 'sharded' or 'unsharded'
     }
     
+    ALLOWED_VALUES = {
+        'size': ['sharded', 'unsharded']
+    }
+    
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.options = self.DEFAULT_OPTIONS.copy()
-        self.options.update(kwargs)
         
-        # Validate size option
-        assert self.options['size'] in ['sharded', 'unsharded'], \
-            f"size option must be 'sharded' or 'unsharded', got {self.options['size']}"
+        # Initialize options manager
+        self.options = OptionsManager(self.DEFAULT_OPTIONS, self.ALLOWED_VALUES)
+        self.options.parse(kwargs)
+        
+        # Get size option
         self.is_sharded = self.options['size'] == 'sharded'
         
         # Load A_unsharded to the device only if needed
