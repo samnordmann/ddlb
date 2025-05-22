@@ -7,8 +7,45 @@ import argparse
 import json
 import os
 import torch
+import itertools
+from typing import Dict, List, Any
 from ddlb import PrimitiveBenchmarkRunner
 from ddlb.communicator import Communicator
+
+def generate_config_combinations(config: Dict[str, List[Dict[str, Any]]]) -> Dict[str, List[Dict[str, Any]]]:
+    """Generate all possible combinations of configuration parameters.
+    
+    Args:
+        config: Dictionary of implementation configurations where values can be lists
+        
+    Returns:
+        Dictionary with all possible combinations of configurations
+    """
+    expanded_config = {}
+    
+    for impl_name, impl_configs in config.items():
+        expanded_config[impl_name] = []
+        
+        for base_config in impl_configs:
+            # Find all list parameters
+            list_params = {k: v for k, v in base_config.items() if isinstance(v, list)}
+            if not list_params:
+                # If no list parameters, just add the config as is
+                expanded_config[impl_name].append(base_config)
+                continue
+                
+            # Generate cartesian product of all list parameters
+            param_names = list(list_params.keys())
+            param_values = list(list_params.values())
+            
+            for combination in itertools.product(*param_values):
+                # Create new config with this combination
+                new_config = base_config.copy()
+                for name, value in zip(param_names, combination):
+                    new_config[name] = value
+                expanded_config[impl_name].append(new_config)
+    
+    return expanded_config
 
 def run_benchmark(comm: Communicator, primitive: str, m: int, n: int, k: int, config: dict) -> None:
     """Run benchmark for the specified primitive with all configurations.
@@ -24,10 +61,13 @@ def run_benchmark(comm: Communicator, primitive: str, m: int, n: int, k: int, co
     rank = comm.rank
     world_size = comm.world_size
 
+    # Generate all possible combinations of configurations
+    expanded_config = generate_config_combinations(config)
+
     if rank == 0:
         print(f"Running {primitive} benchmark with {world_size} MPI processes")
         print("\nConfigurations:")
-        for impl_name, impl_configs in config.items():
+        for impl_name, impl_configs in expanded_config.items():
             for i, opts in enumerate(impl_configs):
                 print(f"  {impl_name}_{i}: {opts}")
 
@@ -35,7 +75,7 @@ def run_benchmark(comm: Communicator, primitive: str, m: int, n: int, k: int, co
     implementations = []
     implementation_options = {}
     
-    for impl_name, impl_configs in config.items():
+    for impl_name, impl_configs in expanded_config.items():
         for i, opts in enumerate(impl_configs):
             impl_id = f"{impl_name}_{i}"
             implementations.append(impl_id)

@@ -6,21 +6,8 @@
     ],
     "pytorch": [
         {
-            "backend": "nccl",
-            "order": "AG_before"
-        },
-        {
-            "backend": "nccl",
-            "order": "AG_after"
-        },
-        {
-            "backend": "ucc/tl/nccl"
-        },
-        {
-            "backend": "ucc/tl/cuda"
-        },
-        {
-            "backend": "ucc/tl/ucp",
+            "backend": ["nccl", "ucc/tl/nccl", "ucc/tl/cuda", "ucc/tl/ucp"],
+            "order": ["AG_before", "AG_after"]
         }
     ]
 } 
