@@ -19,6 +19,13 @@
                     "backend": ["nccl", "ucc/tl/nccl", "ucc/tl/cuda", "ucc/tl/ucp"],
                     "order": ["AG_before", "AG_after"]
                 }
+            ],
+            "fuser": [
+                {
+                    "backend": ["nccl", "ucc/tl/nccl", "ucc/tl/cuda"],
+                    "order": ["AG_before", "AG_after"],
+                    "fusion_strategy": "aggressive"
+                }
             ]
         }
     }

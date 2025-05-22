@@ -11,7 +11,7 @@ from tqdm import tqdm
 import torch
 
 from .primitives import TPColumnwise
-from .primitives.TPColumnwise import PyTorchTPColumnwise, ComputeOnlyTPColumnwise
+from .primitives.TPColumnwise import PyTorchTPColumnwise, ComputeOnlyTPColumnwise, FuserTPColumnwise
 from .communicator import Communicator
 
 class PrimitiveBenchmarkRunner:
@@ -24,6 +24,7 @@ class PrimitiveBenchmarkRunner:
     IMPLEMENTATIONS = {
         'pytorch': PyTorchTPColumnwise,
         'compute_only': ComputeOnlyTPColumnwise,
+        'fuser': FuserTPColumnwise,
     }
     
     def __init__(
