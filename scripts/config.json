@@ -9,14 +9,14 @@
         "num_iterations": 50,
         "num_warmups": 5,
         "implementations": {
-            "fuser": [
-                {
-                    "order": ["AG_before"]
-                }
-            ],
             "compute_only": [
                 {
                     "size": "unsharded"
+                }
+            ],
+            "fuser": [
+                {
+                    "order": ["AG_before"]
                 }
             ],
             "pytorch": [

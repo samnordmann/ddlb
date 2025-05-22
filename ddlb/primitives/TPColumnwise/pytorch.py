@@ -7,7 +7,7 @@ import torch
 import torch.distributed as dist
 
 from .tp_columnwise import TPColumnwise
-from .utils import EnvVarGuard, setup_ucc_env_vars, OptionsManager
+from .utils import EnvVarGuard, setup_ucc_env_vars
 
 class PyTorchTPColumnwise(TPColumnwise):
     """
@@ -34,10 +34,6 @@ class PyTorchTPColumnwise(TPColumnwise):
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        
-        # Initialize options manager
-        self.options = OptionsManager(self.DEFAULT_OPTIONS, self.ALLOWED_VALUES)
-        self.options.parse(kwargs)
         
         # Parse backend configuration
         backend = self.options['backend']

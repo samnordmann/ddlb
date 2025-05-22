@@ -4,7 +4,6 @@ Reference implementation that only performs the local matmul computation without
 
 import torch
 from .tp_columnwise import TPColumnwise
-from .utils import OptionsManager
 
 class ComputeOnlyTPColumnwise(TPColumnwise):
     """
@@ -21,10 +20,6 @@ class ComputeOnlyTPColumnwise(TPColumnwise):
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        
-        # Initialize options manager
-        self.options = OptionsManager(self.DEFAULT_OPTIONS, self.ALLOWED_VALUES)
-        self.options.parse(kwargs)
         
         # Get size option
         self.is_sharded = self.options['size'] == 'sharded'

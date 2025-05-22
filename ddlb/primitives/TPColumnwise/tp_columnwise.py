@@ -3,11 +3,12 @@ Tensor Parallel Column-wise primitive implementations
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 
 import torch
 from torch.testing import assert_close
 from ddlb.communicator import Communicator
+from .utils import OptionsManager
 
 class TPColumnwise(ABC):
     """
@@ -19,6 +20,9 @@ class TPColumnwise(ABC):
     The operation can be implemented using different backends (PyTorch, NCCL, etc.)
     and different algorithms (e.g., with or without CUDA graphs).
     """
+    
+    DEFAULT_OPTIONS = {}
+    ALLOWED_VALUES = {}
     
     def __init__(
         self,
@@ -71,8 +75,9 @@ class TPColumnwise(ABC):
         self.A = None
         self.B = None
         
-        # Store any additional implementation-specific parameters
-        self.kwargs = kwargs
+        # Initialize options manager with class defaults
+        self.options = OptionsManager(self.DEFAULT_OPTIONS, self.ALLOWED_VALUES)
+        self.options.parse(kwargs)
         
         # Setup input matrices
         self._input_setup()
@@ -143,9 +148,6 @@ class TPColumnwise(ABC):
         else:
             atol = 1e-4
         atol *= (self.k) # for accumulated error
-
-        # if self.communicator.rank == 0:
-        #     print(f"Validating with atol: {atol}")
 
         # Compare results using torch.testing.assert_close
         assert_close(

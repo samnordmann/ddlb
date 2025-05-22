@@ -9,7 +9,7 @@ from nvfuser import DataType, FusionDefinition, CommunicatorBackend, DeviceMesh,
 from nvfuser.pytorch_utils import torch_dtype_to_nvfuser_dtype
 
 from .tp_columnwise import TPColumnwise
-from .utils import EnvVarGuard, setup_ucc_env_vars, OptionsManager
+from .utils import EnvVarGuard, setup_ucc_env_vars
 
 
 class AgMatmulFusion(FusionDefinition):
@@ -79,10 +79,6 @@ class FuserTPColumnwise(TPColumnwise):
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        
-        # Initialize options manager
-        self.options = OptionsManager(self.DEFAULT_OPTIONS, self.ALLOWED_VALUES)
-        self.options.parse(kwargs)
         
         # Parse backend configuration
         backend = self.options['backend']
