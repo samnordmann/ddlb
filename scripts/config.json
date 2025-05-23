@@ -1,28 +1,38 @@
 {
     "benchmark": {
         "primitive": "tp_columnwise",
-        "m": 1024,
+        "m": 65536,
         "n": 1024,
-        "k": 1024,
+        "k": 65536,
         "dtype": "float32",
         "validate": true,
-        "num_iterations": 20,
-        "num_warmups": 5,
+        "num_iterations": 50,
+        "num_warmups": 10,
         "implementations": {
             "compute_only": [
                 {
-                    "size": "unsharded"
-                }
-            ],
-            "fuser": [
-                {
-                    "order": ["AG_before"]
+                    "size": ["sharded", "unsharded"]
                 }
             ],
             "pytorch": [
                 {
-                    "backend": ["nccl", "ucc/tl/nccl", "ucc/tl/cuda", "ucc/tl/ucp"],
+                    "backend": ["ucc/tl/cuda", "ucc/tl/ucp"],
+                    "order": ["AG_before"]
+                },
+                {
+                    "backend": ["nccl"],
                     "order": ["AG_before", "AG_after"]
+                }
+            ],
+            "fuser": [
+                {
+                    "algorithm": ["coll_pipeline"],
+                    "s": [2, 8],
+                    "backend": ["ucc/tl/nccl"]
+                },
+                {
+                    "algorithm": ["default"],
+                    "backend": ["nccl"]
                 }
             ]
         }

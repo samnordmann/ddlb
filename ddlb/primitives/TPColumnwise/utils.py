@@ -46,7 +46,7 @@ class OptionsManager:
         
         Args:
             default_options: Dictionary of default option values
-            allowed_values: Dictionary mapping option names to lists of allowed values
+            allowed_values: Dictionary mapping option names to lists of allowed values or range tuples
         """
         self.default_options = default_options.copy()
         self.allowed_values = allowed_values or {}
@@ -83,7 +83,17 @@ class OptionsManager:
         for option, allowed in self.allowed_values.items():
             if option in self.options:
                 value = self.options[option]
-                if value not in allowed:
+                
+                # Handle numeric range validation
+                if isinstance(allowed, tuple) and len(allowed) == 2:
+                    min_val, max_val = allowed
+                    if not (isinstance(value, (int, float)) and min_val <= value <= max_val):
+                        raise ValueError(
+                            f"Invalid value for {option}: {value}. "
+                            f"Must be a number between {min_val} and {max_val}"
+                        )
+                # Handle list of allowed values
+                elif value not in allowed:
                     raise ValueError(
                         f"Invalid value for {option}: {value}. "
                         f"Must be one of {allowed}"
