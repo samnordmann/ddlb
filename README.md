@@ -4,9 +4,10 @@ A library for benchmarking distributed deep learning primitives and operations a
 
 ## Features
 
-- Distributed matrix multiplication primitives
+- TP-columnwise primitives
 - Support for multiple implementations:
   - PyTorch Distributed with various backends (NCCL, UCC/TL)
+  - nvFuser with different communications backends and algorithms (including pipelines for comm/compute overlap) 
   - Compute-only reference implementations
 - Configurable benchmark parameters via JSON
 - Automatic validation of results
@@ -16,42 +17,6 @@ A library for benchmarking distributed deep learning primitives and operations a
 
 ```bash
 pip install -e .
-```
-
-## Project Structure
-
-```
-.
-├── README.md
-├── LICENSE
-├── CONTRIBUTING.md
-├── CHANGELOG.md
-├── requirements.txt
-├── requirements-dev.txt
-├── pyproject.toml
-├── Makefile
-├── ddlb/
-│   ├── __init__.py
-│   ├── benchmark.py
-│   ├── communicator.py
-│   ├── cli/
-│   │   ├── __init__.py
-│   │   └── benchmark.py
-│   └── primitives/
-│       └── TPColumnwise/
-│           ├── __init__.py
-│           ├── pytorch_tp_columnwise.py
-│           ├── compute_only_tp_columnwise.py
-│           └── reference_tp_columnwise.py
-├── scripts/
-│   ├── run_benchmark.py
-│   └── config.json
-├── tests/
-│   └── __init__.py
-└── docs/
-    └── source/
-        ├── conf.py
-        └── index.rst
 ```
 
 ## Configuration
@@ -78,7 +43,18 @@ All benchmark parameters and implementation options are specified in `scripts/co
                     "backend": ["nccl", "ucc/tl/nccl", "ucc/tl/cuda"],
                     "order": ["AG_before", "AG_after"]
                 }
-            ]
+            ],
+            "fuser": [
+                {
+                    "algorithm": ["default"],
+                    "backend": ["nccl"]
+                },
+                {
+                    "algorithm": ["coll_pipeline"],
+                    "s": [2, 8],
+                    "backend": ["ucc/tl/nccl"]
+                }
+            ],
         }
     }
 }
@@ -90,27 +66,17 @@ All benchmark parameters and implementation options are specified in `scripts/co
 
 ### Running the Benchmark
 
-**With MPI (recommended for distributed runs):**
-
 ```bash
 mpirun -np 2 python scripts/run_benchmark.py
 ```
 - Replace `2` with the number of processes/GPUs you want to use.
 - Make sure your environment is set up for MPI and CUDA.
 
-
 ### Output
 - Results and progress are printed to the console.
 - Only rank 0 prints and plots results.
-- If a backend is not supported, you may see errors or crashes—edit `scripts/config.json` to remove problematic backends.
 
 ## Troubleshooting
 
 - **MPI errors:** Always use `mpirun` or `mpiexec` to launch the script for distributed runs.
-- **UCX/InfiniBand errors:** If you see errors about missing UCX transports or segmentation faults, remove `ucc/tl/ucp` from your config.
-- **Import errors:** Ensure you have installed the package in development mode: `pip install -e .`
-- **CUDA errors:** Make sure your CUDA environment is set up and visible to all MPI processes.
-
-## License
-
-MIT
+- **UCX/InfiniBand errors:** If you see errors about missing UCX transports or segmentation faults, remove `ucc/tl/ucp` from your config. We have disabled UCX's cuda transport because of a known hang issue.

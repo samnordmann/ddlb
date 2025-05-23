@@ -9,6 +9,17 @@
         "num_iterations": 20,
         "num_warmups": 5,
         "implementations": {
+            "fuser": [
+                {
+                    "algorithm": ["default"],
+                    "backend": ["nccl"]
+                },
+                {
+                    "algorithm": ["coll_pipeline"],
+                    "s": [2, 8],
+                    "backend": ["ucc/tl/nccl"]
+                }
+            ],
             "compute_only": [
                 {
                     "size": ["sharded", "unsharded"]
@@ -22,17 +33,6 @@
                 {
                     "backend": ["nccl"],
                     "order": ["AG_before", "AG_after"]
-                }
-            ],
-            "fuser": [
-                {
-                    "algorithm": ["coll_pipeline"],
-                    "s": [2, 8],
-                    "backend": ["ucc/tl/nccl"]
-                },
-                {
-                    "algorithm": ["default"],
-                    "backend": ["nccl"]
                 }
             ]
         }
