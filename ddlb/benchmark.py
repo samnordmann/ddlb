@@ -126,11 +126,14 @@ class PrimitiveBenchmarkRunner:
         # Only show progress bars on rank 0
         outer_iter = tqdm(self.implementations, desc="Running benchmarks", position=0) if comm.rank == 0 else self.implementations
         
+        # Create lists of CUDA events for timing
+        start_events = [torch.cuda.Event(enable_timing=True) for _ in range(self.num_iterations)]
+        end_events = [torch.cuda.Event(enable_timing=True) for _ in range(self.num_iterations)]
+
         for impl_id in outer_iter:
             if comm.rank == 0:
                 print(f"Running benchmark for {impl_id}")
-            comm.barrier()
-            torch.cuda.synchronize()
+
             # Create implementation instance
             impl, impl_options = self._create_implementation(impl_id)
             
@@ -144,22 +147,19 @@ class PrimitiveBenchmarkRunner:
                 for _ in warmup_inner_iter:
                     impl.run()
                 
-                # Create CUDA events for timing
-                start_event = torch.cuda.Event(enable_timing=True)
-                end_event = torch.cuda.Event(enable_timing=True)
                 
                 # Actual benchmark runs
-                times = []
                 inner_iter = tqdm(range(self.num_iterations), desc=f"Running {impl_id}", leave=False, position=1) if comm.rank == 0 else range(self.num_iterations)
-                for _ in inner_iter:
-                    start_event.record()
+                for i in inner_iter:
+                    start_events[i].record()
                     result = impl.run()
-                    end_event.record()
-                    
-                    # Get elapsed time in milliseconds
-                    torch.cuda.synchronize()
-                    elapsed_time = start_event.elapsed_time(end_event)
-                    times.append(elapsed_time)
+                    end_events[i].record()
+                
+                # Synchronize once after all iterations
+                torch.cuda.synchronize()
+                
+                # Calculate elapsed times for all iterations
+                times = [start_events[i].elapsed_time(end_events[i]) for i in range(self.num_iterations)]
                 
                 # Calculate statistics
                 mean_time = np.mean(times)
@@ -199,12 +199,6 @@ class PrimitiveBenchmarkRunner:
         
         # Create DataFrame and sort by mean time
         df = pd.DataFrame(results)
-        df = df.sort_values('mean_time (ms)')
-        
-        # Print detailed results on rank 0
-        if comm.rank == 0:
-            print("\nDetailed Results:")
-            print(df.to_string())
         
         return df
     

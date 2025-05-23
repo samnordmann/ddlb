@@ -72,13 +72,6 @@ class PyTorchTPColumnwise(TPColumnwise):
                 device=self.A.device
             )
     
-    def __del__(self):
-        """Clean up process group"""
-        if hasattr(self, 'pg'):
-            dist.barrier()
-            dist.destroy_process_group(self.pg)
-            dist.barrier()
-    
     def run(self) -> torch.Tensor:
         """
         Run the TP Column-wise operation.
@@ -86,10 +79,8 @@ class PyTorchTPColumnwise(TPColumnwise):
         Returns:
             torch.Tensor: Result matrix of shape (m, n)
         """
-        # Synchronize processes before starting
-        self.communicator.barrier()
-        torch.cuda.synchronize()
-        
+        torch.cuda.empty_cache()
+
         if self.order == 'AG_before':
             # First allgather A, then do matmul
             dist.all_gather_into_tensor(self.A_gathered, self.A, group=self.pg)
@@ -99,10 +90,6 @@ class PyTorchTPColumnwise(TPColumnwise):
             local_result = torch.matmul(self.A, self.B)
             dist.all_gather_into_tensor(self.result_gathered, local_result, group=self.pg)
             result = self.result_gathered
-        
-        # Synchronize processes after completion
-        self.communicator.barrier()
-        torch.cuda.synchronize()
         
         return result
 
