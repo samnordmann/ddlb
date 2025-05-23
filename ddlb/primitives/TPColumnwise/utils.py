@@ -122,7 +122,9 @@ def setup_ucc_env_vars(backend: str) -> Dict[str, str]:
     
     if backend.startswith('ucc/tl/'):
         tl = backend.split('/')[-1]
-        env_vars["UCC_CL_BASIC_TLS"] = tl
+        # env_vars["UCC_CL_BASIC_TLS"] = tl
+        env_vars[f"UCC_TL_NCCL_TUNE"] = "0"
+        env_vars[f"UCC_TL_{tl.upper()}_TUNE"] = "inf"
         # to avoid deadlock, disable ucx cuda transport
         if tl == "ucp":
           env_vars["UCX_RNDV_THRESH"] = "0"
