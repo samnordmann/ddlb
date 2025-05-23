@@ -4,10 +4,10 @@
         "m": 65536,
         "n": 1024,
         "k": 65536,
-        "dtype": "float32",
+        "dtype": "float16",
         "validate": true,
-        "num_iterations": 50,
-        "num_warmups": 10,
+        "num_iterations": 20,
+        "num_warmups": 5,
         "implementations": {
             "compute_only": [
                 {

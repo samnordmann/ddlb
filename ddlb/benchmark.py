@@ -123,17 +123,17 @@ class PrimitiveBenchmarkRunner:
         results = []
         comm = Communicator()
         
-        # Only show progress bars on rank 0
-        outer_iter = tqdm(self.implementations, desc="Running benchmarks", position=0) if comm.rank == 0 else self.implementations
+        # Helper lambda for tqdm iterator creation
+        create_tqdm = lambda iterable, **kwargs: tqdm(iterable, **kwargs) if comm.rank == 0 else iterable
         
         # Create lists of CUDA events for timing
         start_events = [torch.cuda.Event(enable_timing=True) for _ in range(self.num_iterations)]
         end_events = [torch.cuda.Event(enable_timing=True) for _ in range(self.num_iterations)]
 
-        for impl_id in outer_iter:
-            if comm.rank == 0:
-                print(f"Running benchmark for {impl_id}")
+        for impl_id in create_tqdm(self.implementations, desc="Running benchmarks", position=0):
 
+            if comm.rank == 0:
+                print(f"Running benchmark for {impl_id} with options {self.implementation_options[impl_id]}")
             # Create implementation instance
             impl, impl_options = self._create_implementation(impl_id)
             
@@ -143,14 +143,11 @@ class PrimitiveBenchmarkRunner:
                               if k in getattr(impl, 'DEFAULT_OPTIONS', {})}
                 
                 # Warmup runs
-                warmup_inner_iter = tqdm(range(self.num_warmups), desc=f"Warming up {impl_id}", leave=False, position=1) if comm.rank == 0 else range(self.num_warmups)
-                for _ in warmup_inner_iter:
+                for _ in create_tqdm(range(self.num_warmups), desc=f"Warming up {impl_id}", position=1, leave=False):
                     impl.run()
                 
-                
                 # Actual benchmark runs
-                inner_iter = tqdm(range(self.num_iterations), desc=f"Running {impl_id}", leave=False, position=1) if comm.rank == 0 else range(self.num_iterations)
-                for i in inner_iter:
+                for i in create_tqdm(range(self.num_iterations), desc=f"Running {impl_id}", position=1, leave=False):
                     start_events[i].record()
                     result = impl.run()
                     end_events[i].record()
@@ -178,6 +175,9 @@ class PrimitiveBenchmarkRunner:
                     'dtype': self.dtype,
                     **impl_options  # Add implementation options to results
                 }
+                # Print result row as pandas raw output
+                if comm.rank == 0: 
+                    print(pd.DataFrame([result_row]).to_string(index=False))
                 
                 # Validate results if requested
                 if self.validate:
