@@ -37,23 +37,28 @@ class PyTorchTPColumnwise(TPColumnwise):
         
         # Parse backend configuration
         backend = self.options['backend']
-        
         if backend.startswith('ucc/tl/'):
-            self.tl = backend.split('/')[-1]
-            self.backend = 'ucc'
+            pytorch_backend = 'ucc'
         else:
-            self.backend = backend
-            self.tl = None
+            pytorch_backend = backend
         
         # Set up environment variables
         self.env_guard = EnvVarGuard(setup_ucc_env_vars(backend))
     
+        # Parse DDLB prefixed environment variables with defaults
+        master_addr = os.environ.get('DDLB_MASTER_ADDR', 'localhost')
+        master_port = os.environ.get('DDLB_MASTER_PORT', '12345')
+
+        dist.init_process_group(
+            backend=pytorch_backend,
+            rank=self.communicator.rank,
+            world_size=self.communicator.world_size,
+            init_method=f"tcp://{master_addr}:{master_port}",
+            device_id=self.communicator.device
+        )
+
         # Get allgather order
         self.order = self.options['order']
-        
-        # Initialize process group and allocate tensors
-        ranks = list(range(self.communicator.world_size))
-        self.pg = dist.new_group(ranks=ranks, backend=self.backend, device_id=self.communicator.device)
 
         if self.order == 'AG_before':
             # For AG_before, we need space for the full A matrix
@@ -71,7 +76,11 @@ class PyTorchTPColumnwise(TPColumnwise):
                 dtype=self.A.dtype,
                 device=self.A.device
             )
-    
+
+    def __del__(self):
+        dist.destroy_process_group()
+        self.communicator.barrier()
+
     def run(self) -> torch.Tensor:
         """
         Run the TP Column-wise operation.
@@ -83,12 +92,12 @@ class PyTorchTPColumnwise(TPColumnwise):
 
         if self.order == 'AG_before':
             # First allgather A, then do matmul
-            dist.all_gather_into_tensor(self.A_gathered, self.A, group=self.pg)
+            dist.all_gather_into_tensor(self.A_gathered, self.A)
             result = torch.matmul(self.A_gathered, self.B)
         else:
             # First do local matmul, then allgather results
             local_result = torch.matmul(self.A, self.B)
-            dist.all_gather_into_tensor(self.result_gathered, local_result, group=self.pg)
+            dist.all_gather_into_tensor(self.result_gathered, local_result)
             result = self.result_gathered
         
         return result

@@ -131,6 +131,8 @@ class PrimitiveBenchmarkRunner:
         end_events = [torch.cuda.Event(enable_timing=True) for _ in range(self.num_iterations)]
 
         for impl_id in create_tqdm(self.implementations, desc="Running benchmarks", position=0):
+            # Force garbage collection to ensure cleanup
+            torch.cuda.empty_cache()
 
             if comm.rank == 0:
                 print(f"Running benchmark for {impl_id} with options {self.implementation_options[impl_id]}")
@@ -193,9 +195,6 @@ class PrimitiveBenchmarkRunner:
             finally:
                 # Clean up implementation
                 del impl
-            
-            # Force garbage collection to ensure cleanup
-            torch.cuda.empty_cache()
         
         # Create DataFrame and sort by mean time
         df = pd.DataFrame(results)

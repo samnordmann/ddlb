@@ -63,10 +63,6 @@ class Communicator:
         assert local_size is not None, "OMPI_COMM_WORLD_LOCAL_SIZE environment variable not set"
         self.local_size = int(local_size)
 
-        # Parse DDLB prefixed environment variables with defaults
-        self.master_addr = os.environ.get('DDLB_MASTER_ADDR', 'localhost')
-        self.master_port = os.environ.get('DDLB_MASTER_PORT', '12345')
-
         # Set CUDA device
         assert self.local_size <= torch.cuda.device_count(), (
             f"Local size {self.local_size} exceeds available CUDA devices {torch.cuda.device_count()}"
@@ -74,36 +70,15 @@ class Communicator:
         torch.cuda.set_device(self.local_rank)
         self.device = torch.device(f"cuda:{self.local_rank}")
 
-        # Initialize process group if not already initialized
-        if not dist.is_initialized():
-            dist.init_process_group(
-                backend='nccl',
-                rank=self.rank,
-                world_size=self.world_size,
-                init_method=f"tcp://{self.master_addr}:{self.master_port}",
-                device_id=self.device
-            )
-
         self._initialized = True
 
-    def __del__(self):
-        """
-        Destructor that cleans up the distributed process group.
-        This ensures proper cleanup of distributed resources when the communicator is destroyed.
-        """
-        if dist.is_initialized():
-            dist.destroy_process_group()
-        MPI.COMM_WORLD.Barrier()
 
     def barrier(self):
         """
         Synchronize all processes at this point.
-        
-        Raises:
-            AssertionError: If process group is not initialized
         """
-        assert dist.is_initialized(), "Process group not initialized"
-        dist.barrier()
+        torch.cuda.synchronize()
+        MPI.COMM_WORLD.Barrier()
 
     def __repr__(self):
         return (
