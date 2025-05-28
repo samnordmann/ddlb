@@ -5,10 +5,7 @@ TransformerEngine implementation of TP Column-wise primitive
 import os
 import torch
 import torch.distributed as dist
-# import transformer_engine as te
-# from transformer_engine.pytorch import fp8_autocast
 import transformer_engine.pytorch as te
-
 
 from .tp_columnwise import TPColumnwise
 from .utils import EnvVarGuard, setup_ucc_env_vars
@@ -25,16 +22,14 @@ class TransformerEngineTPColumnwise(TPColumnwise):
     - 'AG_after': First perform local matmul, then allgather results
     """
     
-    DEFAULT_OPTIONS = {'backend': 'nccl'}
-    
-    ALLOWED_VALUES = {'backend': ['nccl']}
+    DEFAULT_OPTIONS = {}
+    ALLOWED_VALUES = {}
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         master_addr = os.environ.get('DDLB_MASTER_ADDR', 'localhost')
         master_port = os.environ.get('DDLB_MASTER_PORT', '12345')
-
         dist.init_process_group(
             backend='nccl',
             rank=self.communicator.rank,
@@ -55,80 +50,26 @@ class TransformerEngineTPColumnwise(TPColumnwise):
                                 ub_cfgs=None,
                                 bootstrap_backend=None)
 
-        def init_weights(weight):
-            # B is of shape (k, n) and we need to transpose it to (n, k) for the linear layer
-            # print("!!!!!!!!!SAM: INIT WEIGHTS: ", self.B)
-            
-            # Concatenate B world_size times to match expected shape for column parallel linear
-            # B_concat = torch.cat([self.B] * self.communicator.world_size, dim=0)
-            # print("Weight shape:", weight.shape)
-            # print("B shape:", self.B.shape)
-            # print("B_concat shape:", B_concat.shape)
-            weight.data.copy_(self.B.t())
-            # weight.data.copy_(B_concat)
-            return weight
-
         self.layer = te.Linear(
             in_features=self.k,
             out_features=self.n * self.communicator.world_size,
             bias=False,
-            init_method=init_weights,
+            init_method=lambda weight: weight.data.copy_(self.B.t()),
             device=self.communicator.device,
-            params_dtype = self.torch_dtype,
-            # --- Key Parameters ---
+            params_dtype=self.torch_dtype,
             sequence_parallel=True,
-            parallel_mode='column', # Set for TP-Columnwise
+            parallel_mode='column',
             tp_group=self.tp_group,
-            # --------------------
             ub_overlap_ag=True,
             tp_size=self.communicator.world_size,
             ub_name="qkv"
         )
-
         self.layer.set_tensor_parallel_group(self.tp_group)
 
-
-
-
-        # Init ub https://github.com/NVIDIA/TransformerEngine/blob/cd37379d24f574f98e74e81d242c1419f1159e6e/transformer_engine/pytorch/module/base.py#L109
-
     def __del__(self):
+        te.module.base.destroy_ub()
         dist.destroy_process_group()
         self.communicator.barrier()
 
-
     def run(self) -> torch.Tensor:
-        """
-        Run the TP Column-wise operation using TransformerEngine.
-        
-        Returns:
-            torch.Tensor: Result matrix of shape (m, n)
-        """
-        # Implementation: https://github.com/NVIDIA/TransformerEngine/blob/cd37379d24f574f98e74e81d242c1419f1159e6e/transformer_engine/pytorch/csrc/extensions/gemm.cpp#L89
-        # https://github.com/NVIDIA/TransformerEngine/blob/cd37379d24f574f98e74e81d242c1419f1159e6e/transformer_engine/pytorch/cpp_extensions/gemm.py#L24
-        # https://github.com/NVIDIA/TransformerEngine/blob/v1.9/transformer_engine/pytorch/csrc/comm_gemm_overlap.h
-        # https://github.com/NVIDIA/TransformerEngine/blob/cd37379d24f574f98e74e81d242c1419f1159e6e/transformer_engine/pytorch/module/linear.py#L894
-        # https://github.com/NVIDIA/TransformerEngine/blob/cd37379d24f574f98e74e81d242c1419f1159e6e/transformer_engine/pytorch/module/linear.py#L1043
-
-
-
-# File "/usr/local/lib/python3.12/dist-packages/transformer_engine/pytorch/module/linear.py", line 129, in forward
-# assert inp_shape[-1] == in_features, "GEMM not possible"
-        result = self.layer(self.A)
-
-
-
-
-        # te.generic_gemm(
-        #                                         in_features=1024,
-        #                                         out_features=1024,
-        #                                         bias=False,
-        #                                         # Key parameter: Set to 'column' for TP-Columnwise
-        #                                         parallel_mode='column',
-        #                                         # # Provide the tensor parallel group (can also be set later)
-        #                                         # tp_group=tp_group
-        #                                     )
-
-        # result = torch.matmul(self.A, self.B)
-
-        return result 
+        return self.layer(self.A) 

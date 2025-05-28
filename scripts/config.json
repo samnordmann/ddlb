@@ -9,11 +9,32 @@
         "num_iterations": 20,
         "num_warmups": 5,
         "implementations": {
-            "transformer_engine": [
+            "pytorch": [
                 {
+                    "backend": ["nccl"],
+                    "order": ["AG_before", "AG_after"]
+                }
+            ],
+            "fuser": [
+                {
+                    "algorithm": ["default"],
                     "backend": ["nccl"]
+                },
+                {
+                    "algorithm": ["coll_pipeline"],
+                    "s": [2, 8],
+                    "backend": ["ucc/tl/nccl"]
+                }
+            ],
+            "transformer_engine": [
+                {}
+            ],
+            "compute_only": [
+                {
+                    "size": ["sharded", "unsharded"]
                 }
             ]
+
         }
     }
 } 
