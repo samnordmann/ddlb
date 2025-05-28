@@ -48,7 +48,7 @@ class TransformerEngineTPColumnwise(TPColumnwise):
             device_id=self.communicator.device
         )
 
-        te.module.base.initialize_ub(shape=[self.n, self.k],
+        te.module.base.initialize_ub(shape=[self.m, self.k],
                                 tp_size=self.communicator.world_size,
                                 use_fp8=False,
                                 dtype=self.torch_dtype,
@@ -57,12 +57,20 @@ class TransformerEngineTPColumnwise(TPColumnwise):
 
         def init_weights(weight):
             # B is of shape (k, n) and we need to transpose it to (n, k) for the linear layer
-            weight.data.copy_(self.A.to(self.communicator.device))
+            # print("!!!!!!!!!SAM: INIT WEIGHTS: ", self.B)
+            
+            # Concatenate B world_size times to match expected shape for column parallel linear
+            # B_concat = torch.cat([self.B] * self.communicator.world_size, dim=0)
+            # print("Weight shape:", weight.shape)
+            # print("B shape:", self.B.shape)
+            # print("B_concat shape:", B_concat.shape)
+            weight.data.copy_(self.B.t())
+            # weight.data.copy_(B_concat)
             return weight
 
         self.layer = te.Linear(
             in_features=self.k,
-            out_features=self.m,
+            out_features=self.n * self.communicator.world_size,
             bias=False,
             init_method=init_weights,
             device=self.communicator.device,
@@ -106,8 +114,7 @@ class TransformerEngineTPColumnwise(TPColumnwise):
 
 # File "/usr/local/lib/python3.12/dist-packages/transformer_engine/pytorch/module/linear.py", line 129, in forward
 # assert inp_shape[-1] == in_features, "GEMM not possible"
-        result = self.layer(self.B.t())
-
+        result = self.layer(self.A)
 
 
 
