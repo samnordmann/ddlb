@@ -11,7 +11,12 @@ from tqdm import tqdm
 import torch
 
 from .primitives import TPColumnwise
-from .primitives.TPColumnwise import PyTorchTPColumnwise, ComputeOnlyTPColumnwise, FuserTPColumnwise
+from .primitives.TPColumnwise import (
+    PyTorchTPColumnwise,
+    ComputeOnlyTPColumnwise,
+    FuserTPColumnwise,
+    TransformerEngineTPColumnwise
+)
 from .communicator import Communicator
 
 # Configure pandas to display full output
@@ -31,6 +36,7 @@ class PrimitiveBenchmarkRunner:
         'pytorch': PyTorchTPColumnwise,
         'compute_only': ComputeOnlyTPColumnwise,
         'fuser': FuserTPColumnwise,
+        'transformer_engine': TransformerEngineTPColumnwise,
     }
     
     def __init__(
