@@ -72,6 +72,12 @@ mpirun -np 2 python scripts/run_benchmark.py
 - Replace `2` with the number of processes/GPUs you want to use.
 - Make sure your environment is set up for MPI and CUDA.
 
+If you want to generate a nsight profile, you can use a command like:
+```bash
+nsys profile --stats=false -w true -t cublas,cuda,nvtx,osrt,mpi,ucx -o /tmp/ddlb_$(date '+%Y-%m-%d_%H-%M-%S') --capture-range-end repeat --capture-range=cudaProfilerApi mpirun -np 8 python scripts/run_benchmark.py
+```
+Each iteration will produce a separate nsys file.
+
 ### Output
 - Results and progress are printed to the console.
 - Only rank 0 prints and plots results.

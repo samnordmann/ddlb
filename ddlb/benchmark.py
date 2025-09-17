@@ -154,11 +154,17 @@ class PrimitiveBenchmarkRunner:
                 for _ in create_tqdm(range(self.num_warmups), desc=f"Warming up {impl_id}", position=1, leave=False):
                     impl.run()
                 
+                # Start profiling
+                torch.cuda.cudart().cudaProfilerStart()
+
                 # Actual benchmark runs
                 for i in create_tqdm(range(self.num_iterations), desc=f"Running {impl_id}", position=1, leave=False):
                     start_events[i].record()
                     result = impl.run()
                     end_events[i].record()
+
+                # Stop profiling
+                torch.cuda.cudart().cudaProfilerStop()
                 
                 # Synchronize once after all iterations
                 torch.cuda.synchronize()
