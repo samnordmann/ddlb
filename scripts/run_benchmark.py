@@ -4,7 +4,6 @@
 import json
 import sys
 from ddlb.cli import run_benchmark
-from ddlb.communicator import Communicator
 
 def main():
     """Main entry point for the benchmark script."""
@@ -18,9 +17,8 @@ def main():
         print(f"Error loading config file: {e}")
         sys.exit(1)
 
-    # Initialize communicator and run benchmark
-    comm = Communicator()
-    run_benchmark(comm, config)
+    # Run benchmark without initializing communicator in parent
+    run_benchmark(config)
 
 if __name__ == '__main__':
     main() 

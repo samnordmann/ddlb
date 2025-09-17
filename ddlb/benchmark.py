@@ -2,22 +2,126 @@
 Main benchmark runner module for distributed primitives
 """
 
+import os
 import time
+import multiprocessing as mp
 from typing import Dict, List, Optional, Union, Tuple
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-import torch
 
-from .primitives import TPColumnwise
-from .primitives.TPColumnwise import (
-    PyTorchTPColumnwise,
-    ComputeOnlyTPColumnwise,
-    FuserTPColumnwise,
-    TransformerEngineTPColumnwise
-)
-from .communicator import Communicator
+# Avoid importing CUDA-dependent primitives in the parent process.
+
+def _benchmark_worker_entry(
+    impl_id: str,
+    m: int,
+    n: int,
+    k: int,
+    dtype: str,
+    num_warmups: int,
+    num_iterations: int,
+    impl_opts: Dict,
+    validate: bool,
+    result_queue,
+):
+    # Import CUDA-dependent libraries inside child process only
+    import torch
+    import numpy as _np
+    from ddlb.primitives.TPColumnwise import (
+        PyTorchTPColumnwise as _PyTorch,
+        ComputeOnlyTPColumnwise as _ComputeOnly,
+        FuserTPColumnwise as _Fuser,
+        TransformerEngineTPColumnwise as _TE,
+    )
+
+    IMPLEMENTATIONS_LOCAL = {
+        'pytorch': _PyTorch,
+        'compute_only': _ComputeOnly,
+        'fuser': _Fuser,
+        'transformer_engine': _TE,
+    }
+
+    # Parse base implementation and options
+    if '_' in impl_id:
+        base_impl = '_'.join(impl_id.split('_')[:-1])
+    else:
+        base_impl = impl_id
+
+    impl_class = IMPLEMENTATIONS_LOCAL[base_impl]
+    options = getattr(impl_class, 'DEFAULT_OPTIONS', {}).copy()
+    options.update({k: v for k, v in impl_opts.items() if k in options})
+
+    # Create implementation instance inside child
+    impl = impl_class(m=m, n=n, k=k, dtype=dtype, **options)
+
+    try:
+        # Warmups
+        for _ in range(num_warmups):
+            impl.run()
+
+        # CUDA timing events
+        start_events = [torch.cuda.Event(enable_timing=True) for _ in range(num_iterations)]
+        end_events = [torch.cuda.Event(enable_timing=True) for _ in range(num_iterations)]
+
+        # Start profiling
+        try:
+            torch.cuda.cudart().cudaProfilerStart()
+        except Exception:
+            pass
+
+        last_result = None
+        for i in range(num_iterations):
+            start_events[i].record()
+            last_result = impl.run()
+            end_events[i].record()
+
+        # Stop profiling
+        try:
+            torch.cuda.cudart().cudaProfilerStop()
+        except Exception:
+            pass
+
+        torch.cuda.synchronize()
+        times = [start_events[i].elapsed_time(end_events[i]) for i in range(num_iterations)]
+        mean_time = float(_np.mean(times))
+        std_time = float(_np.std(times))
+
+        # Include only implementation default option keys in the result row
+        default_option_keys = list(getattr(impl_class, 'DEFAULT_OPTIONS', {}).keys())
+        impl_option_values = {k: options[k] for k in default_option_keys if k in options}
+
+        result_row = {
+            'implementation': impl_id,
+            'mean_time (ms)': mean_time,
+            'std_time': std_time,
+            'min_time': float(min(times)),
+            'max_time': float(max(times)),
+            'm': m,
+            'n': n,
+            'k': k,
+            'dtype': dtype,
+            **impl_option_values,
+        }
+
+        if validate and last_result is not None:
+            try:
+                impl.validate(last_result)
+                result_row['valid'] = True
+            except Exception as e:
+                result_row['valid'] = False
+                print(f"Warning: Validation failed for {impl_id} with error: {e}")
+
+        result_queue.put(result_row)
+    finally:
+        try:
+            del impl
+        except Exception:
+            pass
+        try:
+            torch.cuda.empty_cache()
+        except Exception:
+            pass
 
 # Configure pandas to display full output
 pd.set_option('display.max_columns', None)
@@ -28,16 +132,7 @@ pd.set_option('display.max_colwidth', None)
 class PrimitiveBenchmarkRunner:
     """Main class for running distributed primitive benchmarks."""
     
-    PRIMITIVES = {
-        'tp_columnwise': TPColumnwise,
-    }
-    
-    IMPLEMENTATIONS = {
-        'pytorch': PyTorchTPColumnwise,
-        'compute_only': ComputeOnlyTPColumnwise,
-        'fuser': FuserTPColumnwise,
-        'transformer_engine': TransformerEngineTPColumnwise,
-    }
+    ALLOWED_PRIMITIVES = {'tp_columnwise'}
     
     def __init__(
         self,
@@ -67,7 +162,7 @@ class PrimitiveBenchmarkRunner:
             num_warmups: Number of warmup iterations
             implementation_options: Optional dictionary of implementation-specific options
         """
-        if primitive not in self.PRIMITIVES:
+        if primitive not in self.ALLOWED_PRIMITIVES:
             raise ValueError(f"Unknown primitive: {primitive}")
         
         self.primitive = primitive
@@ -81,43 +176,7 @@ class PrimitiveBenchmarkRunner:
         self.implementations = implementations
         self.implementation_options = implementation_options or {}
     
-    def _create_implementation(self, impl_id: str):
-        """
-        Create a single implementation instance.
-        
-        Args:
-            impl_id: Implementation identifier
-            
-        Returns:
-            Tuple of (implementation instance, implementation options)
-        """
-        # Extract base implementation name and options
-        if '_' in impl_id:
-            base_impl = '_'.join(impl_id.split('_')[:-1])
-            impl_options = self.implementation_options[impl_id]
-        else:
-            base_impl = impl_id
-            impl_options = self.implementation_options.get(impl_id, {})
-        
-        if base_impl not in self.IMPLEMENTATIONS:
-            raise ValueError(f"Unknown implementation: {base_impl}")
-        
-        # Get implementation options, merging with class defaults
-        impl_class = self.IMPLEMENTATIONS[base_impl]
-        options = getattr(impl_class, 'DEFAULT_OPTIONS', {}).copy()
-        if impl_options:
-            options.update(impl_options)
-        
-        # Create implementation instance
-        impl = impl_class(
-            m=self.m,
-            n=self.n,
-            k=self.k,
-            dtype=self.dtype,
-            **options
-        )
-        
-        return impl, impl_options
+    # _create_implementation is intentionally omitted in favor of per-impl subprocesses
     
     def run(self) -> pd.DataFrame:
         """
@@ -127,90 +186,38 @@ class PrimitiveBenchmarkRunner:
             DataFrame containing benchmark results
         """
         results = []
-        comm = Communicator()
-        
+
+        # Determine rank without initializing CUDA context
+        rank_env = os.environ.get('OMPI_COMM_WORLD_RANK')
+        rank = int(rank_env) if rank_env is not None else 0
+
         # Helper lambda for tqdm iterator creation
-        create_tqdm = lambda iterable, **kwargs: tqdm(iterable, **kwargs) if comm.rank == 0 else iterable
-        
-        # Create lists of CUDA events for timing
-        start_events = [torch.cuda.Event(enable_timing=True) for _ in range(self.num_iterations)]
-        end_events = [torch.cuda.Event(enable_timing=True) for _ in range(self.num_iterations)]
+        create_tqdm = lambda iterable, **kwargs: tqdm(iterable, **kwargs) if rank == 0 else iterable
+
+        # Prepare multiprocessing context with spawn to isolate CUDA state
+        ctx = mp.get_context('spawn')
 
         for impl_id in create_tqdm(self.implementations, desc="Running benchmarks", position=0):
-            # Force garbage collection to ensure cleanup
-            torch.cuda.empty_cache()
-
-            if comm.rank == 0:
+            if rank == 0:
                 print(f"Running benchmark for {impl_id} with options {self.implementation_options[impl_id]}")
-            # Create implementation instance
-            impl, impl_options = self._create_implementation(impl_id)
-            
-            try:
-                # Get implementation options for result tracking
-                impl_options = {k: v for k, v in impl.__dict__.items() 
-                              if k in getattr(impl, 'DEFAULT_OPTIONS', {})}
-                
-                # Warmup runs
-                for _ in create_tqdm(range(self.num_warmups), desc=f"Warming up {impl_id}", position=1, leave=False):
-                    impl.run()
-                
-                # Start profiling
-                torch.cuda.cudart().cudaProfilerStart()
 
-                # Actual benchmark runs
-                for i in create_tqdm(range(self.num_iterations), desc=f"Running {impl_id}", position=1, leave=False):
-                    start_events[i].record()
-                    result = impl.run()
-                    end_events[i].record()
+            # Spawn isolated child process per implementation
+            impl_opts = self.implementation_options.get(impl_id, {})
+            result_queue = ctx.SimpleQueue()
+            proc = ctx.Process(
+                target=_benchmark_worker_entry,
+                args=(impl_id, self.m, self.n, self.k, self.dtype, self.num_warmups, self.num_iterations, impl_opts, self.validate, result_queue),
+            )
+            proc.start()
+            result_row = result_queue.get()
+            proc.join()
 
-                # Stop profiling
-                torch.cuda.cudart().cudaProfilerStop()
-                
-                # Synchronize once after all iterations
-                torch.cuda.synchronize()
-                
-                # Calculate elapsed times for all iterations
-                times = [start_events[i].elapsed_time(end_events[i]) for i in range(self.num_iterations)]
-                
-                # Calculate statistics
-                mean_time = np.mean(times)
-                std_time = np.std(times)
-                
-                # Create result row with implementation options
-                result_row = {
-                    'implementation': impl_id,
-                    'mean_time (ms)': mean_time,
-                    'std_time': std_time,
-                    'min_time': np.min(times),
-                    'max_time': np.max(times),
-                    'm': self.m,
-                    'n': self.n,
-                    'k': self.k,
-                    'dtype': self.dtype,
-                    **impl_options  # Add implementation options to results
-                }
-                # Print result row as pandas raw output
-                if comm.rank == 0: 
-                    print(pd.DataFrame([result_row]).to_string(index=False))
-                
-                # Validate results if requested
-                if self.validate:
-                    try:
-                        impl.validate(result)
-                        result_row['valid'] = True
-                    except Exception as e:
-                        result_row['valid'] = False
-                        print(f"Warning: Validation failed for {impl_id} with error: {e}")
-                
-                results.append(result_row)
-            
-            finally:
-                # Clean up implementation
-                del impl
-        
-        # Create DataFrame and sort by mean time
+            if rank == 0:
+                print(pd.DataFrame([result_row]).to_string(index=False))
+
+            results.append(result_row)
+
         df = pd.DataFrame(results)
-        
         return df
     
     def plot_results(self, results: Optional[pd.DataFrame] = None) -> None:
@@ -229,13 +236,12 @@ class PrimitiveBenchmarkRunner:
         labels = []
         for _, row in results.iterrows():
             impl = row['implementation']
-            base_impl = '_'.join(impl.split('_')[:-1]) if '_' in impl else impl
-            impl_class = self.IMPLEMENTATIONS[base_impl]
-            class_options = getattr(impl_class, 'DEFAULT_OPTIONS', {})
-            options = {k: v for k, v in row.items() if k in class_options}
             label = f"{impl}"
-            if options:
-                label += f" ({', '.join(f'{k}={v}' for k, v in options.items())})"
+            # Use known implementation_options to determine which keys to show
+            impl_opts = self.implementation_options.get(impl, {})
+            display_opts = {k: row[k] for k in impl_opts.keys() if k in row and k != 'implementation'}
+            if display_opts:
+                label += f" ({', '.join(f'{k}={v}' for k, v in display_opts.items())})"
             labels.append(label)
         
         # Plot mean times with error bars

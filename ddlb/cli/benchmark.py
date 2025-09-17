@@ -2,11 +2,9 @@
 
 import json
 import os
-import torch
 import itertools
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 from ddlb import PrimitiveBenchmarkRunner
-from ddlb.communicator import Communicator
 
 def generate_config_combinations(config: Dict[str, List[Dict[str, Any]]]) -> Dict[str, List[Dict[str, Any]]]:
     """Generate all possible combinations of configuration parameters.
@@ -43,15 +41,15 @@ def generate_config_combinations(config: Dict[str, List[Dict[str, Any]]]) -> Dic
     
     return expanded_config
 
-def run_benchmark(comm: Communicator, config: dict) -> None:
+def run_benchmark(config: dict) -> None:
     """Run benchmark for the specified primitive with all configurations.
     
     Args:
-        comm: Communicator instance for distributed environment
         config: Dictionary containing benchmark and implementation configurations
     """
-    rank = comm.rank
-    world_size = comm.world_size
+    # Read rank/world_size from MPI env directly to avoid initializing CUDA in parent
+    rank = int(os.environ.get('OMPI_COMM_WORLD_RANK', '0'))
+    world_size = int(os.environ.get('OMPI_COMM_WORLD_SIZE', '1'))
 
     # Extract benchmark parameters
     benchmark_config = config['benchmark']
@@ -107,7 +105,6 @@ def run_benchmark(comm: Communicator, config: dict) -> None:
     # Only rank 0 prints and plots results
     if rank == 0:
         print("\nBenchmark Results:")
-        print("\nDetailed Results:")
         
         # Calculate TFLOPS (2 FLOPs per multiply-add)
         total_flops = 2 * m * n * k

@@ -1,13 +1,13 @@
 {
     "benchmark": {
         "primitive": "tp_columnwise",
-        "m": 256,
-        "n": 2048,
-        "k": 64,
+        "m": 65536,
+        "n": 4096,
+        "k": 65536,
         "dtype": "float16",
         "validate": true,
-        "num_iterations": 20,
-        "num_warmups": 5,
+        "num_iterations": 50,
+        "num_warmups": 10,
         "implementations": {
             "pytorch": [
                 {

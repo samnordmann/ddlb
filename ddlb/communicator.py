@@ -2,7 +2,6 @@ import os
 import time
 import torch
 import torch.distributed as dist
-from mpi4py import MPI
 
 class Communicator:
     """
@@ -77,13 +76,16 @@ class Communicator:
         """
         Synchronize all processes at this point.
         """
+        # Ensure CUDA work on this device is complete
         torch.cuda.synchronize()
-        MPI.COMM_WORLD.Barrier()
+
+        # Use torch.distributed barrier if a process group is initialized
+        if dist.is_available() and dist.is_initialized():
+            dist.barrier()
 
     def __repr__(self):
         return (
             f"Communicator(rank={self.rank}, world_size={self.world_size}, "
             f"local_rank={self.local_rank}, local_size={self.local_size}, "
-            f"device={self.device}, master_addr={self.master_addr}, "
-            f"master_port={self.master_port})"
+            f"device={self.device})"
         ) 
