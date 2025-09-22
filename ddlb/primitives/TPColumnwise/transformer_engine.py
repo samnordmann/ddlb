@@ -15,11 +15,7 @@ class TransformerEngineTPColumnwise(TPColumnwise):
     TransformerEngine implementation of TP Column-wise primitive.
     
     This implementation uses NVIDIA's TransformerEngine library to optimize the matrix multiplication
-    operation with FP8 precision support. The implementation supports both NCCL and UCC backends.
-    
-    The operation can be performed in two orders:
-    - 'AG_before': First perform allgather, then matmul (default)
-    - 'AG_after': First perform local matmul, then allgather results
+    operation with FP8 precision support.
     """
     
     DEFAULT_OPTIONS = {}
