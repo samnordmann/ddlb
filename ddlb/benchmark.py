@@ -25,22 +25,25 @@ def _benchmark_worker_entry(
     validate: bool,
     result_queue,
 ):
-    # Import CUDA-dependent libraries inside child process only
+    # Import CUDA-dependent libraries inside child process only and lazily
     import torch
     import numpy as _np
-    from ddlb.primitives.TPColumnwise import (
-        PyTorchTPColumnwise as _PyTorch,
-        ComputeOnlyTPColumnwise as _ComputeOnly,
-        FuserTPColumnwise as _Fuser,
-        TransformerEngineTPColumnwise as _TE,
-    )
+    import importlib as _importlib
+    from ddlb.primitives import TPColumnwise as _TPBase
 
-    IMPLEMENTATIONS_LOCAL = {
-        'pytorch': _PyTorch,
-        'compute_only': _ComputeOnly,
-        'fuser': _Fuser,
-        'transformer_engine': _TE,
-    }
+    def _load_impl_class(base_impl: str):
+        # Map name to submodule path and class name
+        mapping = {
+            'pytorch': ('ddlb.primitives.TPColumnwise.pytorch', 'PyTorchTPColumnwise'),
+            'compute_only': ('ddlb.primitives.TPColumnwise.compute_only', 'ComputeOnlyTPColumnwise'),
+            'fuser': ('ddlb.primitives.TPColumnwise.fuser', 'FuserTPColumnwise'),
+            'transformer_engine': ('ddlb.primitives.TPColumnwise.transformer_engine', 'TransformerEngineTPColumnwise'),
+        }
+        if base_impl not in mapping:
+            raise ValueError(f"Unknown implementation: {base_impl}")
+        module_path, class_name = mapping[base_impl]
+        module = _importlib.import_module(module_path)
+        return getattr(module, class_name)
 
     # Parse base implementation and options
     if '_' in impl_id:
@@ -48,7 +51,7 @@ def _benchmark_worker_entry(
     else:
         base_impl = impl_id
 
-    impl_class = IMPLEMENTATIONS_LOCAL[base_impl]
+    impl_class = _load_impl_class(base_impl)
     options = getattr(impl_class, 'DEFAULT_OPTIONS', {}).copy()
     options.update({k: v for k, v in impl_opts.items() if k in options})
 
@@ -60,15 +63,27 @@ def _benchmark_worker_entry(
         for _ in range(num_warmups):
             impl.run()
 
-        # CUDA timing events
-        start_events = [torch.cuda.Event(enable_timing=True) for _ in range(num_iterations)]
-        end_events = [torch.cuda.Event(enable_timing=True) for _ in range(num_iterations)]
-
         # Start profiling
         try:
             torch.cuda.cudart().cudaProfilerStart()
         except Exception:
             pass
+
+        for i in range(5):
+            impl.run()
+
+        # Stop profiling
+        try:
+            torch.cuda.cudart().cudaProfilerStop()
+        except Exception:
+            pass
+
+        for i in range(5):
+            impl.run()
+
+        # CUDA timing events
+        start_events = [torch.cuda.Event(enable_timing=True) for _ in range(num_iterations)]
+        end_events = [torch.cuda.Event(enable_timing=True) for _ in range(num_iterations)]
 
         last_result = None
         for i in range(num_iterations):

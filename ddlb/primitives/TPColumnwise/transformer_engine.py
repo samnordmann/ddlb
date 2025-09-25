@@ -5,7 +5,7 @@ TransformerEngine implementation of TP Column-wise primitive
 import os
 import torch
 import torch.distributed as dist
-import transformer_engine.pytorch as te
+import importlib
 
 from .tp_columnwise import TPColumnwise
 from .utils import EnvVarGuard, setup_ucc_env_vars
@@ -24,6 +24,14 @@ class TransformerEngineTPColumnwise(TPColumnwise):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+        # Import TransformerEngine lazily at instantiation time
+        try:
+            self._te = importlib.import_module('transformer_engine.pytorch')
+        except Exception as e:
+            raise RuntimeError(
+                "TransformerEngine is required for TransformerEngineTPColumnwise but could not be imported."
+            ) from e
+
         master_addr = os.environ.get('DDLB_MASTER_ADDR', 'localhost')
         master_port = os.environ.get('DDLB_MASTER_PORT', '12345')
         dist.init_process_group(
@@ -39,14 +47,14 @@ class TransformerEngineTPColumnwise(TPColumnwise):
             device_id=self.communicator.device
         )
 
-        te.module.base.initialize_ub(shape=[self.m, self.k],
+        self._te.module.base.initialize_ub(shape=[self.m, self.k],
                                 tp_size=self.communicator.world_size,
                                 use_fp8=False,
                                 dtype=self.torch_dtype,
                                 ub_cfgs=None,
                                 bootstrap_backend=None)
 
-        self.layer = te.Linear(
+        self.layer = self._te.Linear(
             in_features=self.k,
             out_features=self.n * self.communicator.world_size,
             bias=False,
@@ -63,7 +71,11 @@ class TransformerEngineTPColumnwise(TPColumnwise):
         self.layer.set_tensor_parallel_group(self.tp_group)
 
     def __del__(self):
-        te.module.base.destroy_ub()
+        try:
+            if hasattr(self, '_te'):
+                self._te.module.base.destroy_ub()
+        except Exception:
+            pass
         dist.destroy_process_group()
         self.communicator.barrier()
 
