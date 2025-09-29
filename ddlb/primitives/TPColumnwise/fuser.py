@@ -153,6 +153,7 @@ class FuserTPColumnwise(TPColumnwise):
         'backend': 'nccl',  # Default backend
         'order': 'AG_before',  # Default order
         'algorithm': 'default',
+        'multiple_process_groups': False,
         's': 8  # Default pipeline size
     }
     
@@ -160,6 +161,7 @@ class FuserTPColumnwise(TPColumnwise):
         'backend': ['nccl', 'ucc', 'ucc/tl/nccl', 'ucc/tl/cuda', 'cuda'],
         'order': ['AG_before', 'AG_after'],
         'algorithm': ['default', 'coll_pipeline', 'p2p_pipeline'],
+        'multiple_process_groups': [True, False],
         's': (1, float('inf'))  # Allow any positive integer
     }
     
@@ -180,10 +182,15 @@ class FuserTPColumnwise(TPColumnwise):
         # Get allgather order
         self.order = self.options['order']
 
-        # Set up environment variables (include nvFuser flag for AG_after)
+        # Set up environment variables (include nvFuser flags)
         _env_vars = setup_ucc_env_vars(backend)
+        enable_flags = []
+        if self.options.get('multiple_process_groups', False):
+            enable_flags.append('multiple_process_groups')
         if self.order == 'AG_after':
-            _env_vars['NVFUSER_ENABLE'] = 'insert_resharding_after'
+            enable_flags.append('insert_resharding_after')
+        if enable_flags:
+            _env_vars['NVFUSER_ENABLE'] = ','.join(enable_flags)
         self.env_guard = EnvVarGuard(_env_vars)
         
         # Get algorithm and pipeline size

@@ -1,47 +1,36 @@
 {
     "benchmark": {
         "primitive": "tp_columnwise",
-        "m": 8192,
-        "n": 8192,
-        "k": 8192,
+        "m": 16384,
+        "n": 16384,
+        "k": 16384,
         "dtype": "float16",
         "validate": true,
-        "num_iterations": 10,
+        "num_iterations": 50,
         "num_warmups": 5,
         "implementations": {
             "fuser": [
                 {
-                    "algorithm": ["p2p_pipeline"],
-                    "backend": ["cuda", "nccl"],
+                    "algorithm": ["default"],
+                    "backend": ["nccl"],
                     "order": ["AG_before"]
                 },
                 {
-                    "algorithm": ["default"],
-                    "backend": ["nccl"],
-                    "order": ["AG_before", "AG_after"]
+                    "algorithm": ["p2p_pipeline"],
+                    "backend": ["cuda"],
+                    "order": ["AG_before"]
                 },
                 {
                     "algorithm": ["coll_pipeline"],
-                    "s": [2, 8],
                     "backend": ["ucc/tl/nccl"],
-                    "order": ["AG_before"]
-                }
-            ],
-            "pytorch": [
-                {
-                    "backend": ["nccl"],
-                    "order": ["AG_after"]
+                    "order": ["AG_before"],
+                    "s": [8],
+                    "multiple_process_groups": [true, false]
                 }
             ],
             "transformer_engine": [
                 {}
-            ],
-            "compute_only": [
-                {
-                    "size": ["sharded", "unsharded"]
-                }
             ]
-
         }
     }
 } 
