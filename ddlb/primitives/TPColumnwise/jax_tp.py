@@ -92,25 +92,25 @@ class JAXTPColumnwise(TPColumnwise):
         key_A, key_B = jax.random.split(key)
         
         # Generate unsharded matrix A with uniform distribution in [-1, 1]
-        self.A_unsharded = 2 * jax.random.uniform(
+        self.A_unsharded = jax.random.uniform(
             key_A,
             shape=(self.m, self.k),
             dtype=jax_dtype,
-            minval=0, 
+            minval=-1, 
             maxval=1
-        ) - 1
+        )
 
         # Shard A across devices - convert to sharded array
         self.A = jax.device_put(self.A_unsharded, self.A_sharding)
 
         # Generate matrix B with uniform distribution in [-1, 1]
-        B_full = 2 * jax.random.uniform(
+        B_full = jax.random.uniform(
             key_B,
             shape=(self.k, self.n),
             dtype=jax_dtype,
-            minval=0,
+            minval=-1,
             maxval=1
-        ) - 1
+        )
         
         # Replicate B across all devices
         self.B = jax.device_put(B_full, self.B_sharding)
@@ -186,4 +186,3 @@ class JAXTPColumnwise(TPColumnwise):
         # Compare results using JAX's allclose
         assert jnp.allclose(result, reference, rtol=0, atol=atol), \
             f"Result validation failed. Max difference: {jnp.max(jnp.abs(result - reference))}"
-
