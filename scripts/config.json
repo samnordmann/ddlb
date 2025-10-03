@@ -28,6 +28,11 @@
                     "multiple_process_groups": [true, false]
                 }
             ],
+            "jax": [
+                {
+                    "order": ["AG_before", "AG_after"]
+                }
+            ],
             "transformer_engine": [
                 {}
             ]

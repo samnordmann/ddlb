@@ -38,6 +38,7 @@ def _benchmark_worker_entry(
             'compute_only': ('ddlb.primitives.TPColumnwise.compute_only', 'ComputeOnlyTPColumnwise'),
             'fuser': ('ddlb.primitives.TPColumnwise.fuser', 'FuserTPColumnwise'),
             'transformer_engine': ('ddlb.primitives.TPColumnwise.transformer_engine', 'TransformerEngineTPColumnwise'),
+            'jax': ('ddlb.primitives.TPColumnwise.jax_tp', 'JAXTPColumnwise'),
         }
         if base_impl not in mapping:
             raise ValueError(f"Unknown implementation: {base_impl}")
