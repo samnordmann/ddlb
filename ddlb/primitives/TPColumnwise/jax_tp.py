@@ -122,35 +122,25 @@ class JAXTPColumnwise(TPColumnwise):
         Returns:
             jnp.ndarray: Result matrix of shape (m, n)
         """
-        if self.order == 'AG_before':
-            def _compute_ag_before(A_shard, B_full):
-                """Allgather first, then matmul"""
-                A_gathered = jax.lax.all_gather(A_shard, axis_name='tp', axis=0, tiled=True)
-                return jnp.matmul(A_gathered, B_full)
+      def _compute_ag_before(A_shard, B_full):
+          """Allgather first, then matmul"""
+          A_gathered = jax.lax.all_gather(A_shard, axis_name='tp', axis=0, tiled=True)
+          return jnp.matmul(A_gathered, B_full)
+
+       def _compute_ag_after(A_shard, B_full):
+            """Matmul first, then allgather results"""
+            local_result = jnp.matmul(A_shard, B_full)
+            return jax.lax.all_gather(local_result, axis_name='tp', axis=0, tiled=True)
+        
+        sharded_fn = shard_map(
+            _compute_ag_before if self.order == 'AG_before' else _compute_ag_after,
+            mesh=self.mesh,
+            in_specs=(P('tp', None), P(None, None)),  # A sharded, B replicated
+            out_specs=P(None, None),  # Result replicated
+            check_rep=False
+        )
+        return sharded_fn(self.A, self.B)
             
-            sharded_fn = shard_map(
-                _compute_ag_before,
-                mesh=self.mesh,
-                in_specs=(P('tp', None), P(None, None)),  # A sharded, B replicated
-                out_specs=P(None, None),  # Result replicated
-                check_rep=False
-            )
-            return sharded_fn(self.A, self.B)
-            
-        else:  # AG_after
-            def _compute_ag_after(A_shard, B_full):
-                """Matmul first, then allgather results"""
-                local_result = jnp.matmul(A_shard, B_full)
-                return jax.lax.all_gather(local_result, axis_name='tp', axis=0, tiled=True)
-            
-            sharded_fn = shard_map(
-                _compute_ag_after,
-                mesh=self.mesh,
-                in_specs=(P('tp', None), P(None, None)),  # A sharded, B replicated
-                out_specs=P(None, None),  # Result replicated
-                check_rep=False
-            )
-            return sharded_fn(self.A, self.B)
 
     def get_inputs(self):
         """
