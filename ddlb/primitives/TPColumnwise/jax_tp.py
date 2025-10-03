@@ -67,10 +67,6 @@ class JAXTPColumnwise(TPColumnwise):
         # Get allgather order after options are parsed
         self.order = self.options['order']
 
-    def __del__(self):
-        # JAX distributed cleanup happens automatically
-        pass
-
     def _input_setup(self):
         """
         Generate random matrices for the operation using JAX arrays.
@@ -122,12 +118,12 @@ class JAXTPColumnwise(TPColumnwise):
         Returns:
             jnp.ndarray: Result matrix of shape (m, n)
         """
-      def _compute_ag_before(A_shard, B_full):
-          """Allgather first, then matmul"""
-          A_gathered = jax.lax.all_gather(A_shard, axis_name='tp', axis=0, tiled=True)
-          return jnp.matmul(A_gathered, B_full)
+        def _compute_ag_before(A_shard, B_full):
+            """Allgather first, then matmul"""
+            A_gathered = jax.lax.all_gather(A_shard, axis_name='tp', axis=0, tiled=True)
+            return jnp.matmul(A_gathered, B_full)
 
-       def _compute_ag_after(A_shard, B_full):
+        def _compute_ag_after(A_shard, B_full):
             """Matmul first, then allgather results"""
             local_result = jnp.matmul(A_shard, B_full)
             return jax.lax.all_gather(local_result, axis_name='tp', axis=0, tiled=True)
@@ -140,18 +136,6 @@ class JAXTPColumnwise(TPColumnwise):
             check_rep=False
         )
         return sharded_fn(self.A, self.B)
-            
-
-    def get_inputs(self):
-        """
-        Get the input matrices for this GPU.
-        
-        Returns:
-            Tuple of (A, B) JAX arrays where:
-            - A is the sharded portion
-            - B is replicated 
-        """
-        return self.A, self.B
 
     def validate(self, result: jnp.ndarray):
         """
