@@ -51,15 +51,19 @@ class JAXTPColumnwise(TPColumnwise):
         print(f"JAX initialized with {world} processes, rank {rank}, coord {coord}")
         
         # Create device mesh for distributed computation
-        # Assumes devices are arranged in a single row for tensor parallelism
+        # In distributed mode, we need to create a mesh that spans all processes
+        # Each process will have its local devices, but the mesh represents the global topology
         devices = jax.devices()
-
-        self.mesh = Mesh(devices, axis_names=('tp',))
         
+        # For distributed tensor parallelism, create mesh with world_size processes
+        # Each process contributes its local devices to the global mesh
+        self.mesh = jax.make_mesh(axis_shapes=(len(devices),), axis_names=('tp',), axis_types=(jax.sharding.AxisType.Explicit,))
+        jax.set_mesh(self.mesh)
+
         # Set up sharding specs before parent init calls _input_setup
-        self.A_sharding = NamedSharding(self.mesh, P('tp', None))  # Shard along first dim
-        self.B_sharding = NamedSharding(self.mesh, P(None, None))  # Replicated
-        self.result_sharding = NamedSharding(self.mesh, P(None, None))  # Replicated
+        self.A_sharding = NamedSharding(self.mesh, P('tp'))  # Shard along first dim
+        self.B_sharding = NamedSharding(self.mesh, P(None))  # Replicated
+        self.result_sharding = NamedSharding(self.mesh, P())  # Replicated
         
         # Now call parent init which will call _input_setup
         super().__init__(*args, **kwargs)
@@ -68,11 +72,10 @@ class JAXTPColumnwise(TPColumnwise):
         self.order = self.options['order']
 
     def _input_setup(self):
-        """
-        Generate random matrices for the operation using JAX arrays.
-        Private method called during initialization.
-        """
-        # Map string dtypes to JAX dtypes
+        super()._input_setup()
+        self.A = jax.numpy.asarray(self.A_unsharded, device=self.A_sharding)
+        self.A_unsharded = jax.numpy.asarray(self.A_unsharded, device=self.B_sharding)
+
         dtype_map = {
             'float32': jnp.float32,
             'float64': jnp.float64,
@@ -82,32 +85,15 @@ class JAXTPColumnwise(TPColumnwise):
             'int64': jnp.int64
         }
         jax_dtype = dtype_map.get(self.dtype, jnp.float32)
-        
-        # Set JAX random key for reproducibility
-        key = jax.random.PRNGKey(42)  # Use same seed as torch version
-        key_A, key_B = jax.random.split(key)
-        
-        # Generate unsharded matrix A with uniform distribution in [-1, 1]
-        self.A_unsharded = jax.random.uniform(
-            key_A,
-            shape=(self.m, self.k),
-            dtype=jax_dtype,
-            minval=-1, 
-            maxval=1
-        )
 
-        # Shard A across devices - convert to sharded array
-        self.A = jax.device_put(self.A_unsharded, self.A_sharding)
-
-        # Generate matrix B with uniform distribution in [-1, 1]
         B_full = jax.random.uniform(
-            key_B,
+            jax.random.PRNGKey(42),
             shape=(self.k, self.n),
             dtype=jax_dtype,
             minval=-1,
             maxval=1
         )
-        
+
         # Replicate B across all devices
         self.B = jax.device_put(B_full, self.B_sharding)
 
@@ -131,8 +117,8 @@ class JAXTPColumnwise(TPColumnwise):
         sharded_fn = shard_map(
             _compute_ag_before if self.order == 'AG_before' else _compute_ag_after,
             mesh=self.mesh,
-            in_specs=(P('tp', None), P(None, None)),  # A sharded, B replicated
-            out_specs=P(None, None),  # Result replicated
+            in_specs=(P('tp'), P(None)),  # A sharded, B replicated
+            out_specs=P(None),  # Result replicated
             check_rep=False
         )
         return sharded_fn(self.A, self.B)
