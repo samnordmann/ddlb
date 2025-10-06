@@ -6,14 +6,10 @@ import os
 import jax
 import jax.numpy as jnp
 import numpy as np
-from jax.experimental import multihost_utils
-from jax.experimental.shard_map import shard_map
-from jax.sharding import Mesh, PartitionSpec as P, NamedSharding
-from typing import Optional
+from jax.sharding import PartitionSpec as P, NamedSharding
 import torch
 
 from .tp_columnwise import TPColumnwise
-from .utils import OptionsManager
 
 class JAXTPColumnwise(TPColumnwise):
     """
