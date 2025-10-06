@@ -72,7 +72,7 @@ class JAXTPColumnwise(TPColumnwise):
         # on the tp axis based on the in and out shardings
         compute_jit = jax.jit(
             lambda A_shard, B_full: jnp.matmul(A_shard, B_full),
-            in_shardings=(P('tp'), P(None)),
+            in_shardings=(self.A_sharding, self.B_sharding),
             out_shardings=self.result_sharding
         )
 
