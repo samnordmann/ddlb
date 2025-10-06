@@ -5,10 +5,12 @@ JAX implementation of TP Column-wise primitive
 import os
 import jax
 import jax.numpy as jnp
+import numpy as np
 from jax.experimental import multihost_utils
 from jax.experimental.shard_map import shard_map
 from jax.sharding import Mesh, PartitionSpec as P, NamedSharding
 from typing import Optional
+import torch
 
 from .tp_columnwise import TPColumnwise
 from .utils import OptionsManager
@@ -63,7 +65,7 @@ class JAXTPColumnwise(TPColumnwise):
         # Set up sharding specs before parent init calls _input_setup
         self.A_sharding = NamedSharding(self.mesh, P('tp'))  # Shard along first dim
         self.B_sharding = NamedSharding(self.mesh, P(None))  # Replicated
-        self.result_sharding = NamedSharding(self.mesh, P())  # Replicated
+        self.result_sharding = NamedSharding(self.mesh, P(None))  # Replicated
         
         # Now call parent init which will call _input_setup
         super().__init__(*args, **kwargs)
@@ -71,31 +73,12 @@ class JAXTPColumnwise(TPColumnwise):
         # Get allgather order after options are parsed
         self.order = self.options['order']
 
+    # This will hold the torch tensors as well in memory
     def _input_setup(self):
         super()._input_setup()
-        self.A = jax.numpy.asarray(self.A_unsharded, device=self.A_sharding)
-        self.A_unsharded = jax.numpy.asarray(self.A_unsharded, device=self.B_sharding)
-
-        dtype_map = {
-            'float32': jnp.float32,
-            'float64': jnp.float64,
-            'float16': jnp.float16,
-            'bfloat16': jnp.bfloat16,
-            'int32': jnp.int32,
-            'int64': jnp.int64
-        }
-        jax_dtype = dtype_map.get(self.dtype, jnp.float32)
-
-        B_full = jax.random.uniform(
-            jax.random.PRNGKey(42),
-            shape=(self.k, self.n),
-            dtype=jax_dtype,
-            minval=-1,
-            maxval=1
-        )
-
-        # Replicate B across all devices
-        self.B = jax.device_put(B_full, self.B_sharding)
+        self.A_jax = jax.numpy.asarray(self.A_unsharded, device=self.A_sharding)
+        #self.A_unsharded = jax.numpy.asarray(self.A_unsharded, device=self.B_sharding)
+        self.B_jax = jax.numpy.asarray(self.B.cpu(), device=self.B_sharding)
 
     def run(self) -> jnp.ndarray:
         """
@@ -121,28 +104,10 @@ class JAXTPColumnwise(TPColumnwise):
             out_specs=P(None),  # Result replicated
             check_rep=False
         )
-        return sharded_fn(self.A, self.B)
+        return sharded_fn(self.A_jax, self.B_jax)
 
     def validate(self, result: jnp.ndarray):
-        """
-        Validate the result by comparing with a single-device computation.
-        
-        Args:
-            result: The result matrix from distributed computation
-            
-        Raises:
-            AssertionError: If the result doesn't match the reference computation
-        """
-        # Compute reference result
-        reference = jnp.matmul(self.A_unsharded, self.B)
-
-        # Set tolerance based on dtype
-        if result.dtype in (jnp.float16, jnp.bfloat16):
-            atol = 1e-3
-        else:
-            atol = 1e-4
-        atol *= self.k  # for accumulated error
-
-        # Compare results using JAX's allclose
-        assert jnp.allclose(result, reference, rtol=0, atol=atol), \
-            f"Result validation failed. Max difference: {jnp.max(jnp.abs(result - reference))}"
+        result.block_until_ready()
+        result = jax.device_get(result)
+        result = np.array(result) # copy because the result is not writable
+        super().validate(torch.from_numpy(result))
