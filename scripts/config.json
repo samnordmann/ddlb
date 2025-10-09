@@ -24,8 +24,7 @@
                     "algorithm": ["coll_pipeline"],
                     "backend": ["ucc/tl/nccl"],
                     "order": ["AG_before"],
-                    "s": [8],
-                    "multiple_process_groups": [true, false]
+                    "s": [8]
                 }
             ],
             "transformer_engine": [
