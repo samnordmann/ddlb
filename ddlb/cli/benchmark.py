@@ -136,16 +136,7 @@ def run_benchmark(config: dict) -> None:
     # Only rank 0 prints and plots results
     if rank == 0:
         print("\nBenchmark Results:")
-        
-        # Calculate TFLOPS per row: 2 * m * n * k / time
-        results['Throughput (TFLOPS)'] = (
-            2 * results['m'] * results['n'] * results['k'] / (results['mean_time (ms)'] * 1e9)
-        )
-        # Interval error (approx.): 2 * std_time scaled similarly
-        results['Throughput Interval error'] = (
-            2 * (2 * results['m'] * results['n'] * results['k']) * results['std_time'] / (results['mean_time (ms)']**2 * 1e9)
-        )
-        
+
         # Create a more readable implementation name that includes options
         def format_config(x):
             opts = implementation_options[x]
@@ -157,14 +148,6 @@ def run_benchmark(config: dict) -> None:
         
         results['config'] = results['implementation'].apply(format_config)
         
-        # Format throughput with standard deviation
-        def format_throughput(row):
-            mean = round(row['Throughput (TFLOPS)'], 1)
-            error = round(row['Throughput Interval error'], 1)
-            return f"{mean} (±{error})"
-        
-        results['Throughput (TFLOPS)'] = results.apply(format_throughput, axis=1)
-        
         # Display results (aggregated across shapes)
-        cols = ['m', 'n', 'k', 'config', 'Throughput (TFLOPS)', 'mean_time (ms)', 'std_time', 'min_time', 'max_time']
+        cols = ['m', 'n', 'k', 'config', 'Throughput (TFLOPS)', 'Throughput std (TFLOPS)', 'mean_time (ms)', 'std_time', 'min_time', 'max_time']
         print(results[cols])

@@ -30,6 +30,7 @@ def _benchmark_worker_entry(
     import torch
     import numpy as _np
     import importlib as _importlib
+    import socket as _socket
     from ddlb.primitives import TPColumnwise as _TPBase
 
     def _load_impl_class(base_impl: str):
@@ -104,6 +105,17 @@ def _benchmark_worker_entry(
         mean_time = float(_np.mean(times))
         std_time = float(_np.std(times))
 
+        # Compute throughput metrics (TFLOPS) per-iteration and aggregate
+        # Constant converts ms to seconds and FLOPs to TFLOPs: 2*m*n*k / (ms * 1e9)
+        thr_const = (2.0 * m * n * k) / 1e9
+        throughputs = [thr_const / t for t in times if t > 0]
+        mean_throughput = float(_np.mean(throughputs)) if throughputs else 0.0
+        std_throughput = float(_np.std(throughputs)) if throughputs else 0.0
+
+        # MPI world size and hostname for traceability
+        world_size = int(os.environ.get('OMPI_COMM_WORLD_SIZE', '1'))
+        hostname = _socket.gethostname()
+
         # Include only implementation default option keys in the result row
         default_option_keys = list(getattr(impl_class, 'DEFAULT_OPTIONS', {}).keys())
         impl_option_values = {k: options[k] for k in default_option_keys if k in options}
@@ -118,6 +130,10 @@ def _benchmark_worker_entry(
             'n': n,
             'k': k,
             'dtype': dtype,
+            'Throughput (TFLOPS)': mean_throughput,
+            'Throughput std (TFLOPS)': std_throughput,
+            'world_size': world_size,
+            'hostname': hostname,
             **impl_option_values,
         }
 
