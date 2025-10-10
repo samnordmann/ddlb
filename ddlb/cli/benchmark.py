@@ -4,6 +4,7 @@ import json
 import os
 import itertools
 from typing import Dict, List, Any, Optional
+from datetime import datetime
 import pandas as pd
 from ddlb import PrimitiveBenchmarkRunner
 
@@ -62,6 +63,7 @@ def run_benchmark(config: dict) -> None:
     validate = benchmark_config['validate']
     num_iterations = benchmark_config['num_iterations']
     num_warmups = benchmark_config['num_warmups']
+    output_csv: Optional[str] = benchmark_config.get('output_csv')
 
     # Generate all possible combinations of configurations
     expanded_config = generate_config_combinations(benchmark_config['implementations'])
@@ -98,6 +100,17 @@ def run_benchmark(config: dict) -> None:
                 **opts
             }
 
+    # Compute a single output CSV path for this run; support {timestamp} token
+    output_csv_path: Optional[str] = output_csv
+    run_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    if rank == 0:
+        if output_csv_path is not None and len(str(output_csv_path).strip()) > 0:
+            output_csv_path = output_csv_path.replace('{timestamp}', run_timestamp)
+        else:
+            # Use first shape or generic label if shapes empty
+            shape_label = f"{m_list[0]}x{k_list[0]}x{n_list[0]}" if len(shapes) > 0 else "shapes"
+            output_csv_path = f"results/{primitive}_{shape_label}_{dtype}_{run_timestamp}.csv"
+
     # Run benchmarks across all requested shapes and aggregate results
     result_frames: List[pd.DataFrame] = []
     for (mm, nn, kk) in shapes:
@@ -113,7 +126,8 @@ def run_benchmark(config: dict) -> None:
             validate=validate,
             num_iterations=num_iterations,
             num_warmups=num_warmups,
-            implementation_options=implementation_options
+            implementation_options=implementation_options,
+            output_csv=output_csv_path
         )
         result_frames.append(runner.run())
 
