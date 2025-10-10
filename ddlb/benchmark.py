@@ -6,6 +6,7 @@ import os
 import time
 import multiprocessing as mp
 from typing import Dict, List, Optional, Union, Tuple
+from datetime import datetime
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -162,6 +163,7 @@ class PrimitiveBenchmarkRunner:
         num_iterations: int = 5,
         num_warmups: int = 2,
         implementation_options: Optional[Dict[str, Dict]] = None,
+        output_csv: Optional[str] = None,
     ):
         """
         Initialize the benchmark runner.
@@ -191,6 +193,7 @@ class PrimitiveBenchmarkRunner:
         self.validate = validate
         self.implementations = implementations
         self.implementation_options = implementation_options or {}
+        self.output_csv = output_csv
     
     # _create_implementation is intentionally omitted in favor of per-impl subprocesses
     
@@ -213,6 +216,27 @@ class PrimitiveBenchmarkRunner:
         # Prepare multiprocessing context with spawn to isolate CUDA state
         ctx = mp.get_context('spawn')
 
+        # Setup CSV output (rank 0 only). Create default path if not provided.
+        output_csv_path: Optional[str] = None
+        if rank == 0:
+            if self.output_csv and len(str(self.output_csv).strip()) > 0:
+                output_csv_path = self.output_csv
+            else:
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                output_csv_path = f"results/{self.primitive}_{self.m}x{self.k}x{self.n}_{self.dtype}_{timestamp}.csv"
+
+            # Ensure directory exists
+            try:
+                os.makedirs(os.path.dirname(output_csv_path), exist_ok=True)
+            except Exception:
+                pass
+
+            # Write header if file doesn't exist yet
+            if output_csv_path and not os.path.exists(output_csv_path):
+                # Minimal header; full headers written on first row write
+                with open(output_csv_path, 'a') as _:
+                    pass
+
         for impl_id in create_tqdm(self.implementations, desc="Running benchmarks", position=0):
             if rank == 0:
                 print(f"Running benchmark for {impl_id} with options {self.implementation_options[impl_id]}")
@@ -230,6 +254,17 @@ class PrimitiveBenchmarkRunner:
 
             if rank == 0:
                 print(pd.DataFrame([result_row]).to_string(index=False))
+
+                # Append row to CSV immediately to avoid losing progress
+                if output_csv_path:
+                    df_row = pd.DataFrame([result_row])
+                    # On first write, include header if file is empty
+                    write_header = False
+                    try:
+                        write_header = os.path.getsize(output_csv_path) == 0
+                    except Exception:
+                        write_header = True
+                    df_row.to_csv(output_csv_path, mode='a', index=False, header=write_header)
 
             results.append(result_row)
 
