@@ -52,7 +52,7 @@ class TransformerEngineTPColumnwise(TPColumnwise):
                                 use_fp8=False,
                                 dtype=self.torch_dtype,
                                 ub_cfgs=None,
-                                bootstrap_backend=None)
+                                bootstrap_backend="nccl")
 
         self.layer = self._te.Linear(
             in_features=self.k,

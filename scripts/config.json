@@ -1,14 +1,25 @@
 {
     "benchmark": {
         "primitive": "tp_columnwise",
-        "m": 16384,
-        "n": 16384,
-        "k": 16384,
+        "m": [1024, 8192, 16384, 32768],
+        "n": [128, 1024, 16384],
+        "k": [1024, 8192, 16384],
         "dtype": "float16",
         "validate": true,
         "num_iterations": 50,
         "num_warmups": 5,
         "implementations": {
+            "compute_only": [
+                {
+                    "size": ["sharded", "unsharded"]
+                }
+            ],
+            "pytorch": [
+                {
+                    "backend": ["nccl"],
+                    "order": ["AG_before", "AG_after"]
+                }
+            ],
             "fuser": [
                 {
                     "algorithm": ["default"],

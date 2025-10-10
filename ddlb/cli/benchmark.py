@@ -4,6 +4,7 @@ import json
 import os
 import itertools
 from typing import Dict, List, Any, Optional
+import pandas as pd
 from ddlb import PrimitiveBenchmarkRunner
 
 def generate_config_combinations(config: Dict[str, List[Dict[str, Any]]]) -> Dict[str, List[Dict[str, Any]]]:
@@ -54,9 +55,9 @@ def run_benchmark(config: dict) -> None:
     # Extract benchmark parameters
     benchmark_config = config['benchmark']
     primitive = benchmark_config['primitive']
-    m = benchmark_config['m']
-    n = benchmark_config['n']
-    k = benchmark_config['k']
+    m_cfg = benchmark_config['m']
+    n_cfg = benchmark_config['n']
+    k_cfg = benchmark_config['k']
     dtype = benchmark_config['dtype']
     validate = benchmark_config['validate']
     num_iterations = benchmark_config['num_iterations']
@@ -65,10 +66,20 @@ def run_benchmark(config: dict) -> None:
     # Generate all possible combinations of configurations
     expanded_config = generate_config_combinations(benchmark_config['implementations'])
 
+    # Normalize m, n, k to lists to support cartesian product across sizes
+    to_list = lambda x: x if isinstance(x, list) else [x]
+    m_list = to_list(m_cfg)
+    n_list = to_list(n_cfg)
+    k_list = to_list(k_cfg)
+
+    shapes = list(itertools.product(m_list, n_list, k_list))
+
     if rank == 0:
         print(f"Running {primitive} benchmark with {world_size} MPI processes")
-        print(f"Matrix dimensions: ({m}, {n}, {k})")
-        print(f"Total matrix size: {m*n + n*k + m*k} elements")
+        print(f"Number of shapes: {len(shapes)}")
+        print("Shapes:")
+        for (mm, nn, kk) in shapes:
+            print(f"  ({mm}, {nn}, {kk})")
         print("\nConfigurations:")
         for impl_name, impl_configs in expanded_config.items():
             for i, opts in enumerate(impl_configs):
@@ -87,30 +98,39 @@ def run_benchmark(config: dict) -> None:
                 **opts
             }
 
-    # Initialize and run benchmark
-    runner = PrimitiveBenchmarkRunner(
-        primitive=primitive,
-        m=m,
-        n=n,
-        k=k,
-        implementations=implementations,
-        dtype=dtype,
-        validate=validate,
-        num_iterations=num_iterations,
-        num_warmups=num_warmups,
-        implementation_options=implementation_options
-    )
-    results = runner.run()
+    # Run benchmarks across all requested shapes and aggregate results
+    result_frames: List[pd.DataFrame] = []
+    for (mm, nn, kk) in shapes:
+        if rank == 0:
+            print(f"\n--- Running shape ({mm}, {nn}, {kk}) ---")
+        runner = PrimitiveBenchmarkRunner(
+            primitive=primitive,
+            m=mm,
+            n=nn,
+            k=kk,
+            implementations=implementations,
+            dtype=dtype,
+            validate=validate,
+            num_iterations=num_iterations,
+            num_warmups=num_warmups,
+            implementation_options=implementation_options
+        )
+        result_frames.append(runner.run())
+
+    results = pd.concat(result_frames, ignore_index=True) if result_frames else pd.DataFrame()
 
     # Only rank 0 prints and plots results
     if rank == 0:
         print("\nBenchmark Results:")
         
-        # Calculate TFLOPS (2 FLOPs per multiply-add)
-        total_flops = 2 * m * n * k
-        results['Throughput (TFLOPS)'] = total_flops / (results['mean_time (ms)'] * 1e9)
-        # compute the interval error as two times the standard deviation of the throughput
-        results['Throughput Interval error'] = 2 * total_flops * results['std_time'] / (results['mean_time (ms)']**2 * 1e9) 
+        # Calculate TFLOPS per row: 2 * m * n * k / time
+        results['Throughput (TFLOPS)'] = (
+            2 * results['m'] * results['n'] * results['k'] / (results['mean_time (ms)'] * 1e9)
+        )
+        # Interval error (approx.): 2 * std_time scaled similarly
+        results['Throughput Interval error'] = (
+            2 * (2 * results['m'] * results['n'] * results['k']) * results['std_time'] / (results['mean_time (ms)']**2 * 1e9)
+        )
         
         # Create a more readable implementation name that includes options
         def format_config(x):
@@ -131,7 +151,6 @@ def run_benchmark(config: dict) -> None:
         
         results['Throughput (TFLOPS)'] = results.apply(format_throughput, axis=1)
         
-        # Display and plot results
-        cols = ['config', 'Throughput (TFLOPS)', 'mean_time (ms)', 'std_time', 'min_time', 'max_time']
+        # Display results (aggregated across shapes)
+        cols = ['m', 'n', 'k', 'config', 'Throughput (TFLOPS)', 'mean_time (ms)', 'std_time', 'min_time', 'max_time']
         print(results[cols])
-        runner.plot_results(results) 
