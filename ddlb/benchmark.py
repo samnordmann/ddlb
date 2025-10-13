@@ -3,6 +3,7 @@ Main benchmark runner module for distributed primitives
 """
 
 import os
+import csv
 import time
 import multiprocessing as mp
 from typing import Dict, List, Optional, Union, Tuple
@@ -119,9 +120,20 @@ def _benchmark_worker_entry(
         # Include only implementation default option keys in the result row
         default_option_keys = list(getattr(impl_class, 'DEFAULT_OPTIONS', {}).keys())
         impl_option_values = {k: options[k] for k in default_option_keys if k in options}
+        # Exclude size from CSV columns and labels
+        filtered_impl_option_values = {k: v for k, v in impl_option_values.items() if k != 'size'}
+
+        # Human-readable implementation label with options (excluding size)
+        impl_label = base_impl
+        if filtered_impl_option_values:
+            impl_label += f" (" + ", ".join(f"{k}={v}" for k, v in filtered_impl_option_values.items()) + ")"
+
+        # Consolidate implementation options into a single string column 'option'
+        ordered_option_keys = [k for k in getattr(impl_class, 'DEFAULT_OPTIONS', {}).keys() if k in filtered_impl_option_values]
+        option_str = ", ".join(f"{k}={filtered_impl_option_values[k]}" for k in ordered_option_keys)
 
         result_row = {
-            'implementation': impl_id,
+            'implementation': impl_label,
             'mean_time (ms)': mean_time,
             'std_time': std_time,
             'min_time': float(min(times)),
@@ -134,7 +146,7 @@ def _benchmark_worker_entry(
             'Throughput std (TFLOPS)': std_throughput,
             'world_size': world_size,
             'hostname': hostname,
-            **impl_option_values,
+            'option': option_str,
         }
 
         if validate and last_result is not None:
@@ -280,7 +292,7 @@ class PrimitiveBenchmarkRunner:
                         write_header = os.path.getsize(output_csv_path) == 0
                     except Exception:
                         write_header = True
-                    df_row.to_csv(output_csv_path, mode='a', index=False, header=write_header)
+                    df_row.to_csv(output_csv_path, mode='a', index=False, header=write_header, quoting=csv.QUOTE_MINIMAL)
 
             results.append(result_row)
 
