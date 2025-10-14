@@ -137,16 +137,8 @@ def run_benchmark(config: dict) -> None:
     if rank == 0:
         print("\nBenchmark Results:")
 
-        # Create a more readable implementation name that includes options
-        def format_config(x):
-            opts = implementation_options[x]
-            impl = opts['implementation']
-            other_opts = {k: v for k, v in opts.items() if k != 'implementation'}
-            if other_opts:
-                return f"{impl} ({', '.join(f'{k}={v}' for k, v in other_opts.items())})"
-            return impl
-        
-        results['config'] = results['implementation'].apply(format_config)
+        # The 'implementation' column is already a human-readable label including options
+        results['config'] = results['implementation']
         
         # Display results (aggregated across shapes)
         cols = ['m', 'n', 'k', 'config', 'Throughput (TFLOPS)', 'Throughput std (TFLOPS)', 'mean_time (ms)', 'std_time', 'min_time', 'max_time']
