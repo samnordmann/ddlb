@@ -3,9 +3,11 @@ Main benchmark runner module for distributed primitives
 """
 
 import os
+import csv
 import time
 import multiprocessing as mp
 from typing import Dict, List, Optional, Union, Tuple
+from datetime import datetime
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -29,6 +31,7 @@ def _benchmark_worker_entry(
     import torch
     import numpy as _np
     import importlib as _importlib
+    import socket as _socket
     from ddlb.primitives import TPColumnwise as _TPBase
 
     def _load_impl_class(base_impl: str):
@@ -103,12 +106,34 @@ def _benchmark_worker_entry(
         mean_time = float(_np.mean(times))
         std_time = float(_np.std(times))
 
+        # Compute throughput metrics (TFLOPS) per-iteration and aggregate
+        # Constant converts ms to seconds and FLOPs to TFLOPs: 2*m*n*k / (ms * 1e9)
+        thr_const = (2.0 * m * n * k) / 1e9
+        throughputs = [thr_const / t for t in times if t > 0]
+        mean_throughput = float(_np.mean(throughputs)) if throughputs else 0.0
+        std_throughput = float(_np.std(throughputs)) if throughputs else 0.0
+
+        # MPI world size and hostname for traceability
+        world_size = int(os.environ.get('OMPI_COMM_WORLD_SIZE', '1'))
+        hostname = _socket.gethostname()
+
         # Include only implementation default option keys in the result row
         default_option_keys = list(getattr(impl_class, 'DEFAULT_OPTIONS', {}).keys())
         impl_option_values = {k: options[k] for k in default_option_keys if k in options}
+        # Exclude size from CSV columns and labels
+        filtered_impl_option_values = {k: v for k, v in impl_option_values.items() if k != 'size'}
+
+        # Human-readable implementation label with options (excluding size)
+        impl_label = base_impl
+        if filtered_impl_option_values:
+            impl_label += f" (" + ", ".join(f"{k}={v}" for k, v in filtered_impl_option_values.items()) + ")"
+
+        # Consolidate implementation options into a single string column 'option'
+        ordered_option_keys = [k for k in getattr(impl_class, 'DEFAULT_OPTIONS', {}).keys() if k in filtered_impl_option_values]
+        option_str = ", ".join(f"{k}={filtered_impl_option_values[k]}" for k in ordered_option_keys)
 
         result_row = {
-            'implementation': impl_id,
+            'implementation': impl_label,
             'mean_time (ms)': mean_time,
             'std_time': std_time,
             'min_time': float(min(times)),
@@ -117,7 +142,11 @@ def _benchmark_worker_entry(
             'n': n,
             'k': k,
             'dtype': dtype,
-            **impl_option_values,
+            'Throughput (TFLOPS)': mean_throughput,
+            'Throughput std (TFLOPS)': std_throughput,
+            'world_size': world_size,
+            'hostname': hostname,
+            'option': option_str,
         }
 
         if validate and last_result is not None:
@@ -162,6 +191,7 @@ class PrimitiveBenchmarkRunner:
         num_iterations: int = 5,
         num_warmups: int = 2,
         implementation_options: Optional[Dict[str, Dict]] = None,
+        output_csv: Optional[str] = None,
     ):
         """
         Initialize the benchmark runner.
@@ -191,6 +221,7 @@ class PrimitiveBenchmarkRunner:
         self.validate = validate
         self.implementations = implementations
         self.implementation_options = implementation_options or {}
+        self.output_csv = output_csv
     
     # _create_implementation is intentionally omitted in favor of per-impl subprocesses
     
@@ -213,6 +244,27 @@ class PrimitiveBenchmarkRunner:
         # Prepare multiprocessing context with spawn to isolate CUDA state
         ctx = mp.get_context('spawn')
 
+        # Setup CSV output (rank 0 only). Create default path if not provided.
+        output_csv_path: Optional[str] = None
+        if rank == 0:
+            if self.output_csv and len(str(self.output_csv).strip()) > 0:
+                output_csv_path = self.output_csv
+            else:
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                output_csv_path = f"results/{self.primitive}_{self.m}x{self.k}x{self.n}_{self.dtype}_{timestamp}.csv"
+
+            # Ensure directory exists
+            try:
+                os.makedirs(os.path.dirname(output_csv_path), exist_ok=True)
+            except Exception:
+                pass
+
+            # Write header if file doesn't exist yet
+            if output_csv_path and not os.path.exists(output_csv_path):
+                # Minimal header; full headers written on first row write
+                with open(output_csv_path, 'a') as _:
+                    pass
+
         for impl_id in create_tqdm(self.implementations, desc="Running benchmarks", position=0):
             if rank == 0:
                 print(f"Running benchmark for {impl_id} with options {self.implementation_options[impl_id]}")
@@ -230,6 +282,17 @@ class PrimitiveBenchmarkRunner:
 
             if rank == 0:
                 print(pd.DataFrame([result_row]).to_string(index=False))
+
+                # Append row to CSV immediately to avoid losing progress
+                if output_csv_path:
+                    df_row = pd.DataFrame([result_row])
+                    # On first write, include header if file is empty
+                    write_header = False
+                    try:
+                        write_header = os.path.getsize(output_csv_path) == 0
+                    except Exception:
+                        write_header = True
+                    df_row.to_csv(output_csv_path, mode='a', index=False, header=write_header, quoting=csv.QUOTE_MINIMAL)
 
             results.append(result_row)
 

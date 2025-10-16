@@ -1,14 +1,26 @@
 {
     "benchmark": {
         "primitive": "tp_columnwise",
-        "m": 16384,
-        "n": 16384,
-        "k": 16384,
+        "m": [1024, 8192, 16384, 32768],
+        "n": [128, 1024, 16384],
+        "k": [1024, 8192, 16384],
         "dtype": "float16",
         "validate": true,
         "num_iterations": 50,
         "num_warmups": 5,
+        "output_csv": "results/tp_columnwise_results_{timestamp}.csv",
         "implementations": {
+            "compute_only": [
+                {
+                    "size": ["sharded", "unsharded"]
+                }
+            ],
+            "pytorch": [
+                {
+                    "backend": ["nccl"],
+                    "order": ["AG_before", "AG_after"]
+                }
+            ],
             "fuser": [
                 {
                     "algorithm": ["default"],
@@ -24,8 +36,7 @@
                     "algorithm": ["coll_pipeline"],
                     "backend": ["ucc/tl/nccl"],
                     "order": ["AG_before"],
-                    "s": [8],
-                    "multiple_process_groups": [true, false]
+                    "s": [8]
                 }
             ],
             "transformer_engine": [

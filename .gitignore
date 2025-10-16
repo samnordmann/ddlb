@@ -185,6 +185,7 @@ credentials*
 # For example:
 # my_secret_config.ini
 # data/large_dataset_files/
+results/
 
 # Development environment
 .devcontainer.json
