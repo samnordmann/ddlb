@@ -67,6 +67,8 @@ def _benchmark_worker_entry(
         for _ in range(num_warmups):
             impl.run()
 
+        torch.cuda.synchronize()
+
         # Start profiling
         try:
             torch.cuda.cudart().cudaProfilerStart()
@@ -76,13 +78,15 @@ def _benchmark_worker_entry(
         for i in range(5):
             impl.run()
 
+        torch.cuda.synchronize()
+
         # Stop profiling
         try:
             torch.cuda.cudart().cudaProfilerStop()
         except Exception:
             pass
 
-        for i in range(5):
+        for i in range(num_warmups):
             impl.run()
 
         # CUDA timing events
@@ -94,12 +98,6 @@ def _benchmark_worker_entry(
             start_events[i].record()
             last_result = impl.run()
             end_events[i].record()
-
-        # Stop profiling
-        try:
-            torch.cuda.cudart().cudaProfilerStop()
-        except Exception:
-            pass
 
         torch.cuda.synchronize()
         times = [start_events[i].elapsed_time(end_events[i]) for i in range(num_iterations)]
