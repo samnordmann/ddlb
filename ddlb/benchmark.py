@@ -247,9 +247,6 @@ class PrimitiveBenchmarkRunner:
         if rank == 0:
             if self.output_csv and len(str(self.output_csv).strip()) > 0:
                 output_csv_path = self.output_csv
-            else:
-                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                output_csv_path = f"results/{self.primitive}_{self.m}x{self.k}x{self.n}_{self.dtype}_{timestamp}.csv"
 
             # Ensure directory exists
             try:

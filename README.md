@@ -75,7 +75,7 @@ Run directly via the CLI module and pass all parameters as flags.
 
 Quick smoke test (single process):
 ```bash
-mpirun -np 4 python -m ddlb.cli.benchmark \
+mpirun -np 4 python ddlb/cli/benchmark.py \
   --primitive tp_columnwise \
   -m 1024 \
   -n 128 \
@@ -88,7 +88,7 @@ mpirun -np 4 python -m ddlb.cli.benchmark \
 
 Multiple sizes and implementations:
 ```bash
-mpirun -np 4 python -m ddlb.cli.benchmark \
+mpirun -np 4 python ddlb/cli/benchmark.py \
   --primitive tp_columnwise \
   -m 1024,8192,16384 \
   -n 128,1024,16384 \
@@ -107,7 +107,7 @@ mpirun -np 4 python -m ddlb.cli.benchmark \
 
 Custom CSV path to write output (supports {timestamp}):
 ```bash
-mpirun -np 4 python -m ddlb.cli.benchmark \
+mpirun -np 4 python ddlb/cli/benchmark.py \
   --primitive tp_columnwise \
   -m 8192 -n 1024 -k 8192 \
   --output-csv results/tp_columnwise_results_{timestamp}.csv \
