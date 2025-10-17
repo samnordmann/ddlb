@@ -67,6 +67,8 @@ def _benchmark_worker_entry(
         for _ in range(num_warmups):
             impl.run()
 
+        torch.cuda.synchronize()
+
         # Start profiling
         try:
             torch.cuda.cudart().cudaProfilerStart()
@@ -76,13 +78,15 @@ def _benchmark_worker_entry(
         for i in range(5):
             impl.run()
 
+        torch.cuda.synchronize()
+
         # Stop profiling
         try:
             torch.cuda.cudart().cudaProfilerStop()
         except Exception:
             pass
 
-        for i in range(5):
+        for i in range(num_warmups):
             impl.run()
 
         # CUDA timing events
@@ -94,12 +98,6 @@ def _benchmark_worker_entry(
             start_events[i].record()
             last_result = impl.run()
             end_events[i].record()
-
-        # Stop profiling
-        try:
-            torch.cuda.cudart().cudaProfilerStop()
-        except Exception:
-            pass
 
         torch.cuda.synchronize()
         times = [start_events[i].elapsed_time(end_events[i]) for i in range(num_iterations)]
@@ -249,9 +247,6 @@ class PrimitiveBenchmarkRunner:
         if rank == 0:
             if self.output_csv and len(str(self.output_csv).strip()) > 0:
                 output_csv_path = self.output_csv
-            else:
-                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                output_csv_path = f"results/{self.primitive}_{self.m}x{self.k}x{self.n}_{self.dtype}_{timestamp}.csv"
 
             # Ensure directory exists
             try:
