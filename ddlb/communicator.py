@@ -8,7 +8,7 @@ class Communicator:
     A singleton class that manages distributed training environment setup and communication.
     
     This class handles:
-    1. MPI/OpenMPI environment variable parsing and validation
+    1. MPI/OpenMPI/SLURM environment variable parsing and validation
     2. CUDA device assignment based on local rank
     3. PyTorch distributed process group initialization
     4. Master node address and port configuration
@@ -17,11 +17,11 @@ class Communicator:
     setup across the entire application. Only one instance can exist at runtime.
     
     Environment Variables:
-        Required MPI variables:
-            - OMPI_COMM_WORLD_RANK: Global rank of the process
-            - OMPI_COMM_WORLD_LOCAL_RANK: Local rank within the node
-            - OMPI_COMM_WORLD_SIZE: Total number of processes
-            - OMPI_COMM_WORLD_LOCAL_SIZE: Number of processes on this node
+        Supported MPI/SLURM variables (with fallback order):
+            - Global rank: OMPI_COMM_WORLD_RANK → SLURM_PROCID → PMI_RANK → default "0"
+            - Local rank: OMPI_COMM_WORLD_LOCAL_RANK → SLURM_LOCALID → default "0"
+            - World size: OMPI_COMM_WORLD_SIZE → SLURM_NTASKS → PMI_SIZE → default "1"
+            - Local size: OMPI_COMM_WORLD_LOCAL_SIZE → SLURM_NTASKS_PER_NODE → default "1"
         
         Optional DDLB variables (with defaults):
             - DDLB_MASTER_ADDR: Master node address (default: 'localhost')
@@ -45,22 +45,20 @@ class Communicator:
         if self._initialized:
             return
 
-        # Parse MPI/OpenMPI environment variables with assertions
-        rank = os.environ.get('OMPI_COMM_WORLD_RANK')
-        assert rank is not None, "OMPI_COMM_WORLD_RANK environment variable not set"
-        self.rank = int(rank)
+        # Parse MPI/OpenMPI/SLURM environment variables with fallbacks
+        self.rank = int(os.getenv("OMPI_COMM_WORLD_RANK", 
+                                  os.getenv("SLURM_PROCID", 
+                                           os.getenv("PMI_RANK", "0"))))
 
-        local_rank = os.environ.get('OMPI_COMM_WORLD_LOCAL_RANK')
-        assert local_rank is not None, "OMPI_COMM_WORLD_LOCAL_RANK environment variable not set"
-        self.local_rank = int(local_rank)
+        self.local_rank = int(os.getenv("OMPI_COMM_WORLD_LOCAL_RANK", 
+                                        os.getenv("SLURM_LOCALID", "0")))
 
-        world_size = os.environ.get('OMPI_COMM_WORLD_SIZE')
-        assert world_size is not None, "OMPI_COMM_WORLD_SIZE environment variable not set"
-        self.world_size = int(world_size)
+        self.world_size = int(os.getenv("OMPI_COMM_WORLD_SIZE", 
+                                        os.getenv("SLURM_NTASKS", 
+                                                 os.getenv("PMI_SIZE", "1"))))
 
-        local_size = os.environ.get('OMPI_COMM_WORLD_LOCAL_SIZE')
-        assert local_size is not None, "OMPI_COMM_WORLD_LOCAL_SIZE environment variable not set"
-        self.local_size = int(local_size)
+        self.local_size = int(os.getenv("OMPI_COMM_WORLD_LOCAL_SIZE", 
+                                        os.getenv("SLURM_NTASKS_PER_NODE", "1")))
 
         # Set CUDA device
         assert self.local_size <= torch.cuda.device_count(), (
