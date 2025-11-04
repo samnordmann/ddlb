@@ -49,9 +49,13 @@ def run_benchmark(config: dict) -> None:
     Args:
         config: Dictionary containing benchmark and implementation configurations
     """
-    # Read rank/world_size from MPI env directly to avoid initializing CUDA in parent
-    rank = int(os.environ.get('OMPI_COMM_WORLD_RANK', '0'))
-    world_size = int(os.environ.get('OMPI_COMM_WORLD_SIZE', '1'))
+    # Read rank/world_size from MPI/SLURM env directly to avoid initializing CUDA in parent
+    rank = int(os.getenv("OMPI_COMM_WORLD_RANK", 
+                         os.getenv("SLURM_PROCID", 
+                                  os.getenv("PMI_RANK", "0"))))
+    world_size = int(os.getenv("OMPI_COMM_WORLD_SIZE", 
+                               os.getenv("SLURM_NTASKS", 
+                                        os.getenv("PMI_SIZE", "1"))))
 
     # Extract benchmark parameters
     benchmark_config = config['benchmark']
