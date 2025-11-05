@@ -7,6 +7,79 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 import pandas as pd
 from ddlb import PrimitiveBenchmarkRunner
+import argparse
+
+
+def _infer_scalar(value: str) -> Any:
+    """Infer basic Python type from a string token.
+
+    Supports int, float, bool, and str as fallback.
+    """
+    v = value.strip()
+    if v.lower() in {"true", "false"}:
+        return v.lower() == "true"
+    try:
+        if v.startswith("0") and v != "0":
+            # preserve strings like 08 rather than interpreting as octal/ints
+            raise ValueError
+        return int(v)
+    except Exception:
+        pass
+    try:
+        return float(v)
+    except Exception:
+        return v
+
+
+def _parse_value_list(v: str) -> Any:
+    """Parse a comma-separated value list with type inference.
+
+    Returns a list when multiple tokens are present; otherwise a scalar.
+    """
+    parts = [p for p in (v or "").split(",")]
+    parts = [p.strip() for p in parts if len(p.strip()) > 0]
+    if len(parts) == 0:
+        return ""
+    if len(parts) == 1:
+        return _infer_scalar(parts[0])
+    return [_infer_scalar(p) for p in parts]
+
+
+def _parse_int_list(v: str) -> List[int]:
+    """Parse a comma-separated integer list from a string."""
+    values = [s.strip() for s in str(v).split(",") if len(s.strip()) > 0]
+    return [int(x) for x in values]
+
+
+def _parse_impl_spec(spec: str) -> (str, Dict[str, Any]):
+    """Parse implementation spec of the form:
+
+    name;key=value[,value];key2=value
+
+    - Multiple --impl flags can be used; each becomes a separate base config.
+    - Values separated by commas become a list; scalars are inferred.
+    """
+    if spec is None:
+        raise ValueError("Empty implementation spec")
+    tokens = [t for t in str(spec).split(";") if len(t.strip()) > 0]
+    if len(tokens) == 0:
+        raise ValueError("Invalid implementation spec: empty")
+    name = tokens[0].strip()
+    options: Dict[str, Any] = {}
+    for tok in tokens[1:]:
+        if "=" not in tok:
+            # treat as flag-like boolean true
+            k = tok.strip()
+            if k:
+                options[k] = True
+            continue
+        k, v = tok.split("=", 1)
+        k = k.strip()
+        v = v.strip()
+        if not k:
+            continue
+        options[k] = _parse_value_list(v)
+    return name, options
 
 def generate_config_combinations(config: Dict[str, List[Dict[str, Any]]]) -> Dict[str, List[Dict[str, Any]]]:
     """Generate all possible combinations of configuration parameters.
@@ -147,3 +220,100 @@ def run_benchmark(config: dict) -> None:
         # Display results (aggregated across shapes)
         cols = ['m', 'n', 'k', 'config', 'Throughput (TFLOPS)', 'Throughput std (TFLOPS)', 'mean_time (ms)', 'std_time', 'min_time', 'max_time']
         print(results[cols])
+
+
+def main() -> None:
+    """CLI entry point to run benchmarks without a JSON file."""
+    parser = argparse.ArgumentParser(description="Run DDLB benchmarks via command line arguments")
+    parser.add_argument(
+        "--primitive",
+        required=True,
+        choices=["tp_columnwise"],
+        help="Primitive to benchmark",
+    )
+    parser.add_argument(
+        "-m",
+        "--m",
+        required=True,
+        help="Comma-separated list of m sizes (e.g., 1024,8192,16384)",
+    )
+    parser.add_argument(
+        "-n",
+        "--n",
+        required=True,
+        help="Comma-separated list of n sizes (e.g., 128,1024,16384)",
+    )
+    parser.add_argument(
+        "-k",
+        "--k",
+        required=True,
+        help="Comma-separated list of k sizes (e.g., 1024,8192,16384)",
+    )
+    parser.add_argument(
+        "--dtype",
+        default="float16",
+        help="Data type (e.g., float16, float32)",
+    )
+    parser.add_argument(
+        "--validate",
+        dest="validate",
+        action="store_true",
+        default=True,
+        help="Enable result validation (default)",
+    )
+    parser.add_argument(
+        "--num-iterations",
+        type=int,
+        default=50,
+        help="Number of timing iterations",
+    )
+    parser.add_argument(
+        "--num-warmups",
+        type=int,
+        default=5,
+        help="Number of warmup iterations",
+    )
+    parser.add_argument(
+        "--output-csv",
+        type=str,
+        default=None,
+        help="Optional output CSV path; supports {timestamp}",
+    )
+    parser.add_argument(
+        "--impl",
+        action="append",
+        required=True,
+        help=(
+            "Implementation spec: name;key=value[,value];key2=value. "
+            "Repeat --impl to add multiple base configs."
+        ),
+    )
+
+    args = parser.parse_args()
+
+    # Build implementations mapping: name -> list[options dict]
+    implementations: Dict[str, List[Dict[str, Any]]] = {}
+    for spec in args.impl:
+        name, opts = _parse_impl_spec(spec)
+        implementations.setdefault(name, []).append(opts)
+
+    config: Dict[str, Any] = {
+        "benchmark": {
+            "primitive": args.primitive,
+            "m": _parse_int_list(args.m),
+            "n": _parse_int_list(args.n),
+            "k": _parse_int_list(args.k),
+            "dtype": args.dtype,
+            "validate": args.validate,
+            "num_iterations": int(args.num_iterations),
+            "num_warmups": int(args.num_warmups),
+            "output_csv": args.output_csv,
+            "implementations": implementations,
+        }
+    }
+
+    run_benchmark(config)
+
+
+if __name__ == "__main__":
+    main()
