@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-from ddlb.envs import get_world_size, get_env
+from ddlb.envs import get_world_size, get_rank
 
 # Avoid importing CUDA-dependent primitives in the parent process.
 
@@ -234,8 +234,7 @@ class PrimitiveBenchmarkRunner:
         results = []
 
         # Determine rank without initializing CUDA context
-        rank_env = get_env('OMPI_COMM_WORLD_RANK')
-        rank = int(rank_env) if rank_env else 0
+        rank = get_rank()
 
         # Helper lambda for tqdm iterator creation
         create_tqdm = lambda iterable, **kwargs: tqdm(iterable, **kwargs) if rank == 0 else iterable
