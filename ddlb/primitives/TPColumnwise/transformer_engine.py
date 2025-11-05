@@ -9,6 +9,7 @@ import importlib
 
 from .tp_columnwise import TPColumnwise
 from .utils import EnvVarGuard, setup_ucc_env_vars
+from ...envs import get_master_addr, get_master_port
 
 class TransformerEngineTPColumnwise(TPColumnwise):
     """
@@ -32,8 +33,8 @@ class TransformerEngineTPColumnwise(TPColumnwise):
                 "TransformerEngine is required for TransformerEngineTPColumnwise but could not be imported."
             ) from e
 
-        master_addr = os.environ.get('DDLB_MASTER_ADDR', 'localhost')
-        master_port = os.environ.get('DDLB_MASTER_PORT', '12345')
+        master_addr = get_master_addr()
+        master_port = get_master_port()
         dist.init_process_group(
             backend='nccl',
             rank=self.communicator.rank,

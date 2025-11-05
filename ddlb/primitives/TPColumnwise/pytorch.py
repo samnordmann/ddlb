@@ -8,6 +8,7 @@ import torch.distributed as dist
 
 from .tp_columnwise import TPColumnwise
 from .utils import EnvVarGuard, setup_ucc_env_vars
+from ...envs import get_master_addr, get_master_port
 
 class PyTorchTPColumnwise(TPColumnwise):
     """
@@ -46,8 +47,8 @@ class PyTorchTPColumnwise(TPColumnwise):
         self.env_guard = EnvVarGuard(setup_ucc_env_vars(backend))
     
         # Parse DDLB prefixed environment variables with defaults
-        master_addr = os.environ.get('DDLB_MASTER_ADDR', 'localhost')
-        master_port = os.environ.get('DDLB_MASTER_PORT', '12345')
+        master_addr = get_master_addr()
+        master_port = get_master_port()
 
         dist.init_process_group(
             backend=pytorch_backend,

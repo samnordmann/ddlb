@@ -10,6 +10,7 @@ from jax.sharding import PartitionSpec as P, NamedSharding
 import torch
 
 from .tp_columnwise import TPColumnwise
+from ...envs import get_rank, get_world_size, get_jax_coord_addr
 
 class JAXTPColumnwise(TPColumnwise):
     """
@@ -23,9 +24,9 @@ class JAXTPColumnwise(TPColumnwise):
     
     def __init__(self, *args, **kwargs):
         # Initialize JAX distributed before parent init
-        rank = int(os.getenv("OMPI_COMM_WORLD_RANK", "0"))
-        world = int(os.getenv("OMPI_COMM_WORLD_SIZE", "1"))
-        coord = os.getenv("JAX_COORD_ADDR", "127.0.0.1:12355")  # export this via mpirun
+        rank = get_rank()
+        world = get_world_size()
+        coord = get_jax_coord_addr()  # export this via mpirun
 
         if coord == "127.0.0.1:12355":
             print("Export JAX_COORD_ADDR=<some_host_in_job>:12355")

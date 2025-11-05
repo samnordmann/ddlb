@@ -8,6 +8,7 @@ from datetime import datetime
 import pandas as pd
 from ddlb import PrimitiveBenchmarkRunner
 import argparse
+from ..envs import get_rank, get_world_size
 
 
 def _infer_scalar(value: str) -> Any:
@@ -123,12 +124,8 @@ def run_benchmark(config: dict) -> None:
         config: Dictionary containing benchmark and implementation configurations
     """
     # Read rank/world_size from MPI/SLURM env directly to avoid initializing CUDA in parent
-    rank = int(os.getenv("OMPI_COMM_WORLD_RANK", 
-                         os.getenv("SLURM_PROCID", 
-                                  os.getenv("PMI_RANK", "0"))))
-    world_size = int(os.getenv("OMPI_COMM_WORLD_SIZE", 
-                               os.getenv("SLURM_NTASKS", 
-                                        os.getenv("PMI_SIZE", "1"))))
+    rank = get_rank()
+    world_size = get_world_size()
 
     # Extract benchmark parameters
     benchmark_config = config['benchmark']
