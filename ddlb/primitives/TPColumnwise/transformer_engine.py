@@ -9,7 +9,7 @@ import importlib
 
 from .tp_columnwise import TPColumnwise
 from .utils import EnvVarGuard, setup_ucc_env_vars
-from ...envs import get_master_addr, get_master_port
+from ddlb.envs import get_master_addr, get_master_port
 
 class TransformerEngineTPColumnwise(TPColumnwise):
     """

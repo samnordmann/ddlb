@@ -10,7 +10,7 @@ from jax.sharding import PartitionSpec as P, NamedSharding
 import torch
 
 from .tp_columnwise import TPColumnwise
-from ...envs import get_rank, get_world_size, get_jax_coord_addr
+from ddlb.envs import get_rank, get_world_size, get_jax_coord_addr
 
 class JAXTPColumnwise(TPColumnwise):
     """

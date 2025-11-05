@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-from .envs import get_world_size, get_env
+from ddlb.envs import get_world_size, get_env
 
 # Avoid importing CUDA-dependent primitives in the parent process.
 

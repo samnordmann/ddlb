@@ -8,7 +8,7 @@ from datetime import datetime
 import pandas as pd
 from ddlb import PrimitiveBenchmarkRunner
 import argparse
-from ..envs import get_rank, get_world_size
+from ddlb.envs import get_rank, get_world_size
 
 
 def _infer_scalar(value: str) -> Any:

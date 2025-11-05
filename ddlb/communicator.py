@@ -2,7 +2,7 @@ import os
 import time
 import torch
 import torch.distributed as dist
-from .envs import get_rank, get_local_rank, get_world_size, get_local_size
+from ddlb.envs import get_rank, get_local_rank, get_world_size, get_local_size
 
 class Communicator:
     """
