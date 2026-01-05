@@ -38,11 +38,11 @@ def _benchmark_worker_entry(
     def _load_impl_class(base_impl: str):
         # Map name to submodule path and class name
         mapping = {
-            'pytorch': ('ddlb.primitives.SP_TP_Rowwise.pytorch', 'PyTorchSP_TP_Rowwise'),
-            'compute_only': ('ddlb.primitives.SP_TP_Rowwise.compute_only', 'ComputeOnlySP_TP_Rowwise'),
-            'fuser': ('ddlb.primitives.SP_TP_Rowwise.fuser', 'FuserSP_TP_Rowwise'),
-            'transformer_engine': ('ddlb.primitives.SP_TP_Rowwise.transformer_engine', 'TransformerEngineSP_TP_Rowwise'),
-            'jax': ('ddlb.primitives.SP_TP_Rowwise.jax_tp', 'JAXSP_TP_Rowwise'),
+            'pytorch': ('ddlb.primitives.SP_TP_Rowwise.pytorch', 'PyTorch_SP_TP_Rowwise'),
+            'compute_only': ('ddlb.primitives.SP_TP_Rowwise.compute_only', 'ComputeOnly_SP_TP_Rowwise'),
+            'fuser': ('ddlb.primitives.SP_TP_Rowwise.fuser', 'Fuser_SP_TP_Rowwise'),
+            'transformer_engine': ('ddlb.primitives.SP_TP_Rowwise.transformer_engine', 'TransformerEngine_SP_TP_Rowwise'),
+            'jax': ('ddlb.primitives.SP_TP_Rowwise.jax_tp', 'JAX_SP_TP_Rowwise'),
         }
         if base_impl not in mapping:
             raise ValueError(f"Unknown implementation: {base_impl}")

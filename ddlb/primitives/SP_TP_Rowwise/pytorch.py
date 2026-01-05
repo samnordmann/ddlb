@@ -10,7 +10,7 @@ from .sp_tp_rowwise import SP_TP_Rowwise
 from .utils import EnvVarGuard, setup_ucc_env_vars
 from ddlb.envs import get_master_addr, get_master_port
 
-class PyTorchSP_TP_Rowwise(SP_TP_Rowwise):
+class PyTorch_SP_TP_Rowwise(SP_TP_Rowwise):
     """
     PyTorch implementation of SP_TP_Rowwise primitive using PyTorch's distributed module.
     Performs Allgather on A followed by matrix multiplication with B.

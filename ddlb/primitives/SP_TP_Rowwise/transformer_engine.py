@@ -11,7 +11,7 @@ from .sp_tp_rowwise import SP_TP_Rowwise
 from .utils import EnvVarGuard, setup_ucc_env_vars
 from ddlb.envs import get_master_addr, get_master_port
 
-class TransformerEngineSP_TP_Rowwise(SP_TP_Rowwise):
+class TransformerEngine_SP_TP_Rowwise(SP_TP_Rowwise):
     """
     TransformerEngine implementation of SP_TP_Rowwise primitive.
     
@@ -30,7 +30,7 @@ class TransformerEngineSP_TP_Rowwise(SP_TP_Rowwise):
             self._te = importlib.import_module('transformer_engine.pytorch')
         except Exception as e:
             raise RuntimeError(
-                "TransformerEngine is required for TransformerEngineSP_TP_Rowwise but could not be imported."
+                "TransformerEngine is required for TransformerEngine_SP_TP_Rowwise but could not be imported."
             ) from e
 
         master_addr = get_master_addr()

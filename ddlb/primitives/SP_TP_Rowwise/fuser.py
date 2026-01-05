@@ -138,7 +138,7 @@ class AgMatmulP2PBasedPipelineFusion(FusionDefinition):
         self.C.axis(0).parallelize(ParallelType.stream)
 
 
-class FuserSP_TP_Rowwise(SP_TP_Rowwise):
+class Fuser_SP_TP_Rowwise(SP_TP_Rowwise):
     """
     nvFuser implementation of TP Column-wise primitive.
     

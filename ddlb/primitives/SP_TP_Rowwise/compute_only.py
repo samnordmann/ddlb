@@ -5,7 +5,7 @@ Reference implementation that only performs the local matmul computation without
 import torch
 from .sp_tp_rowwise import SP_TP_Rowwise
 
-class ComputeOnlySP_TP_Rowwise(SP_TP_Rowwise):
+class ComputeOnly_SP_TP_Rowwise(SP_TP_Rowwise):
     """
     Reference implementation that only performs the local matmul computation without the allgather.
     """

@@ -12,7 +12,7 @@ import torch
 from .sp_tp_rowwise import SP_TP_Rowwise
 from ddlb.envs import get_rank, get_world_size, get_jax_coord_addr
 
-class JAXSP_TP_Rowwise(SP_TP_Rowwise):
+class JAX_SP_TP_Rowwise(SP_TP_Rowwise):
     """
     JAX implementation of SP_TP_Rowwise primitive using JAX's distributed communication.
     
