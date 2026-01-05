@@ -1,5 +1,5 @@
 """
-Tensor Parallel Column-wise primitive implementations
+Sparse Tensor Parallel Row-wise primitive implementations
 """
 
 from abc import ABC, abstractmethod
@@ -10,12 +10,12 @@ from torch.testing import assert_close
 from ddlb.communicator import Communicator
 from .utils import OptionsManager
 
-class TPColumnwise(ABC):
+class SP_TP_Rowwise(ABC):
     """
-    Abstract base class for Tensor Parallel Column-wise operations.
+    Abstract base class for Sparse Tensor Parallel Row-wise operations.
     
     This primitive represents the operation: Allgather + Matrix Multiplication
-    where the input matrices are split column-wise across GPUs.
+    where the input matrices are split row-wise across GPUs.
     
     The operation can be implemented using different backends (PyTorch, NCCL, etc.)
     and different algorithms (e.g., with or without CUDA graphs).
@@ -34,7 +34,7 @@ class TPColumnwise(ABC):
         **kwargs
     ):
         """
-        Initialize the TP Column-wise primitive.
+        Initialize the SP_TP_Rowwise primitive.
         
         Args:
             m: Number of rows in first matrix
@@ -89,7 +89,7 @@ class TPColumnwise(ABC):
     @abstractmethod
     def run(self) -> torch.Tensor:
         """
-        Run the TP Column-wise operation.
+        Run the SP_TP_Rowwise operation.
         
         Returns:
             The result matrix of shape (m, n)

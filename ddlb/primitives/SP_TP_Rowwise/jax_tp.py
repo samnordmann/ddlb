@@ -1,5 +1,5 @@
 """
-JAX implementation of TP Column-wise primitive
+JAX implementation of SP_TP_Rowwise primitive
 """
 
 import os
@@ -9,12 +9,12 @@ import numpy as np
 from jax.sharding import PartitionSpec as P, NamedSharding
 import torch
 
-from .tp_columnwise import TPColumnwise
+from .sp_tp_rowwise import SP_TP_Rowwise
 from ddlb.envs import get_rank, get_world_size, get_jax_coord_addr
 
-class JAXTPColumnwise(TPColumnwise):
+class JAXSP_TP_Rowwise(SP_TP_Rowwise):
     """
-    JAX implementation of TP Column-wise primitive using JAX's distributed communication.
+    JAX implementation of SP_TP_Rowwise primitive using JAX's distributed communication.
     
     Uses JAX's mesh and sharding for distributed matmul
     """

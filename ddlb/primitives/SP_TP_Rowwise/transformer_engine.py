@@ -1,5 +1,5 @@
 """
-TransformerEngine implementation of TP Column-wise primitive
+TransformerEngine implementation of SP_TP_Rowwise primitive
 """
 
 import os
@@ -7,13 +7,13 @@ import torch
 import torch.distributed as dist
 import importlib
 
-from .tp_columnwise import TPColumnwise
+from .sp_tp_rowwise import SP_TP_Rowwise
 from .utils import EnvVarGuard, setup_ucc_env_vars
 from ddlb.envs import get_master_addr, get_master_port
 
-class TransformerEngineTPColumnwise(TPColumnwise):
+class TransformerEngineSP_TP_Rowwise(SP_TP_Rowwise):
     """
-    TransformerEngine implementation of TP Column-wise primitive.
+    TransformerEngine implementation of SP_TP_Rowwise primitive.
     
     This implementation uses NVIDIA's TransformerEngine library to optimize the matrix multiplication
     operation with FP8 precision support.
@@ -30,7 +30,7 @@ class TransformerEngineTPColumnwise(TPColumnwise):
             self._te = importlib.import_module('transformer_engine.pytorch')
         except Exception as e:
             raise RuntimeError(
-                "TransformerEngine is required for TransformerEngineTPColumnwise but could not be imported."
+                "TransformerEngine is required for TransformerEngineSP_TP_Rowwise but could not be imported."
             ) from e
 
         master_addr = get_master_addr()

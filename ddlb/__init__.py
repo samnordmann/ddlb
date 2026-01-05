@@ -10,18 +10,18 @@ import typing as _typing
 
 __all__ = [
     "PrimitiveBenchmarkRunner",
-    "TPColumnwise",
-    "PyTorchTPColumnwise",
+    "SP_TP_Rowwise",
+    "PyTorchSP_TP_Rowwise",
 ]
 
 if _typing.TYPE_CHECKING:
     from .benchmark import PrimitiveBenchmarkRunner  # noqa: F401
-    from .primitives import TPColumnwise, PyTorchTPColumnwise  # noqa: F401
+    from .primitives import SP_TP_Rowwise, PyTorchSP_TP_Rowwise  # noqa: F401
 
 
 def __getattr__(name):
     if name == 'PrimitiveBenchmarkRunner':
         return importlib.import_module('.benchmark', __name__).PrimitiveBenchmarkRunner
-    if name == 'TPColumnwise' or name == 'PyTorchTPColumnwise':
+    if name == 'SP_TP_Rowwise' or name == 'PyTorchSP_TP_Rowwise':
         return getattr(importlib.import_module('.primitives', __name__), name)
     raise AttributeError(f"module {__name__} has no attribute {name}")

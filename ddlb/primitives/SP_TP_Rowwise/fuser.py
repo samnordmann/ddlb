@@ -1,5 +1,5 @@
 """
-nvFuser implementation of TP Column-wise primitive
+nvFuser implementation of SP_TP_Rowwise primitive
 """
 
 import os
@@ -9,7 +9,7 @@ import nvfuser_direct as nvfuser
 from nvfuser_direct import DataType, FusionDefinition, CommunicatorBackend, ParallelType
 from nvfuser_direct.pytorch_utils import torch_dtype_to_nvfuser_dtype
 
-from .tp_columnwise import TPColumnwise
+from .sp_tp_rowwise import SP_TP_Rowwise
 from .utils import EnvVarGuard, setup_ucc_env_vars
 
 
@@ -138,7 +138,7 @@ class AgMatmulP2PBasedPipelineFusion(FusionDefinition):
         self.C.axis(0).parallelize(ParallelType.stream)
 
 
-class FuserTPColumnwise(TPColumnwise):
+class FuserSP_TP_Rowwise(SP_TP_Rowwise):
     """
     nvFuser implementation of TP Column-wise primitive.
     

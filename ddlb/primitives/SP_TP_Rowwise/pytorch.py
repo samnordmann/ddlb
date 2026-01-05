@@ -1,18 +1,18 @@
 """
-PyTorch implementation of TP Column-wise primitive
+PyTorch implementation of SP_TP_Rowwise primitive
 """
 
 import os
 import torch
 import torch.distributed as dist
 
-from .tp_columnwise import TPColumnwise
+from .sp_tp_rowwise import SP_TP_Rowwise
 from .utils import EnvVarGuard, setup_ucc_env_vars
 from ddlb.envs import get_master_addr, get_master_port
 
-class PyTorchTPColumnwise(TPColumnwise):
+class PyTorchSP_TP_Rowwise(SP_TP_Rowwise):
     """
-    PyTorch implementation of TP Column-wise primitive using PyTorch's distributed module.
+    PyTorch implementation of SP_TP_Rowwise primitive using PyTorch's distributed module.
     Performs Allgather on A followed by matrix multiplication with B.
     
     Supports both NCCL and UCC backends. For UCC, transport layer can be specified
@@ -84,7 +84,7 @@ class PyTorchTPColumnwise(TPColumnwise):
 
     def run(self) -> torch.Tensor:
         """
-        Run the TP Column-wise operation.
+        Run the SP_TP_Rowwise operation.
         
         Returns:
             torch.Tensor: Result matrix of shape (m, n)
