@@ -31,7 +31,7 @@ Example JSON:
 ```json
 {
     "benchmark": {
-        "primitive": "tp_columnwise",
+        "primitive": "sp_tp_rowwise",
         "m": 65536,
         "n": 1024,
         "k": 1024,
@@ -76,7 +76,7 @@ Run directly via the CLI module and pass all parameters as flags.
 Quick smoke test (single process):
 ```bash
 mpirun -np 4 python ddlb/cli/benchmark.py \
-  --primitive tp_columnwise \
+  --primitive sp_tp_rowwise \
   -m 1024 \
   -n 128 \
   -k 1024 \
@@ -89,7 +89,7 @@ mpirun -np 4 python ddlb/cli/benchmark.py \
 Multiple sizes and implementations:
 ```bash
 mpirun -np 4 python ddlb/cli/benchmark.py \
-  --primitive tp_columnwise \
+  --primitive sp_tp_rowwise \
   -m 1024,8192,16384 \
   -n 128,1024,16384 \
   -k 1024,8192,16384 \
@@ -108,9 +108,9 @@ mpirun -np 4 python ddlb/cli/benchmark.py \
 Custom CSV path to write output (supports {timestamp}):
 ```bash
 mpirun -np 4 python ddlb/cli/benchmark.py \
-  --primitive tp_columnwise \
+  --primitive sp_tp_rowwise \
   -m 8192 -n 1024 -k 8192 \
-  --output-csv results/tp_columnwise_results_{timestamp}.csv \
+  --output-csv results/sp_tp_rowwise_results_{timestamp}.csv \
   --impl pytorch;backend=nccl
 ```
 
@@ -146,7 +146,7 @@ from ddlb.cli import run_benchmark
 
 config = {
     "benchmark": {
-        "primitive": "tp_columnwise",
+        "primitive": "sp_tp_rowwise",
         "m": [8192],
         "n": [1024],
         "k": [8192],
@@ -154,7 +154,7 @@ config = {
         "validate": True,
         "num_iterations": 10,
         "num_warmups": 3,
-        "output_csv": "results/tp_columnwise_results_{timestamp}.csv",
+        "output_csv": "results/sp_tp_rowwise_results_{timestamp}.csv",
         "implementations": {
             "pytorch": [
                 {"backend": "nccl"}
