@@ -1,5 +1,5 @@
 """
-Sparse Tensor Parallel Row-wise primitive implementations
+Sparse Sequence and Tensor Parallel Row-wise primitive implementations
 """
 
 from .sp_tp_rowwise import SP_TP_Rowwise

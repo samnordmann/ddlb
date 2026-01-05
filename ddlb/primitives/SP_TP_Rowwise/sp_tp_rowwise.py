@@ -1,5 +1,5 @@
 """
-Sparse Tensor Parallel Row-wise primitive implementations
+Sparse Sequence and Tensor Parallel Row-wise primitive implementations
 """
 
 from abc import ABC, abstractmethod
@@ -12,7 +12,7 @@ from .utils import OptionsManager
 
 class SP_TP_Rowwise(ABC):
     """
-    Abstract base class for Sparse Tensor Parallel Row-wise operations.
+    Abstract base class for Sparse Sequence and Tensor Parallel Row-wise operations.
     
     This primitive represents the operation: Allgather + Matrix Multiplication
     where the input matrices are split row-wise across GPUs.
