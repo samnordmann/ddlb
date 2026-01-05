@@ -176,7 +176,7 @@ pd.set_option('display.max_colwidth', None)
 class PrimitiveBenchmarkRunner:
     """Main class for running distributed primitive benchmarks."""
     
-    ALLOWED_PRIMITIVES = {'tp_columnwise'}
+    ALLOWED_PRIMITIVES = {'sp_tp_rowwise'}
     
     def __init__(
         self,
@@ -196,7 +196,7 @@ class PrimitiveBenchmarkRunner:
         Initialize the benchmark runner.
         
         Args:
-            primitive: Name of the primitive to benchmark ('tp_columnwise')
+            primitive: Name of the primitive to benchmark ('sp_tp_rowwise')
             m: Number of rows in first matrix
             n: Number of columns in second matrix
             k: Number of columns in first matrix / rows in second matrix

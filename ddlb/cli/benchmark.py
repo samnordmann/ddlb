@@ -225,7 +225,7 @@ def main() -> None:
     parser.add_argument(
         "--primitive",
         required=True,
-        choices=["tp_columnwise"],
+        choices=["sp_tp_rowwise"],
         help="Primitive to benchmark",
     )
     parser.add_argument(
