@@ -2,6 +2,7 @@ import os
 import time
 import torch
 import torch.distributed as dist
+from ddlb.envs import get_rank, get_local_rank, get_world_size, get_local_size
 
 class Communicator:
     """
@@ -46,19 +47,10 @@ class Communicator:
             return
 
         # Parse MPI/OpenMPI/SLURM environment variables with fallbacks
-        self.rank = int(os.getenv("OMPI_COMM_WORLD_RANK", 
-                                  os.getenv("SLURM_PROCID", 
-                                           os.getenv("PMI_RANK", "0"))))
-
-        self.local_rank = int(os.getenv("OMPI_COMM_WORLD_LOCAL_RANK", 
-                                        os.getenv("SLURM_LOCALID", "0")))
-
-        self.world_size = int(os.getenv("OMPI_COMM_WORLD_SIZE", 
-                                        os.getenv("SLURM_NTASKS", 
-                                                 os.getenv("PMI_SIZE", "1"))))
-
-        self.local_size = int(os.getenv("OMPI_COMM_WORLD_LOCAL_SIZE", 
-                                        os.getenv("SLURM_NTASKS_PER_NODE", "1")))
+        self.rank = get_rank()
+        self.local_rank = get_local_rank()
+        self.world_size = get_world_size()
+        self.local_size = get_local_size()
 
         # Set CUDA device
         assert self.local_size <= torch.cuda.device_count(), (

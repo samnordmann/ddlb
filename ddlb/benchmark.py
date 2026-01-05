@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+from ddlb.envs import get_world_size, get_rank
 
 # Avoid importing CUDA-dependent primitives in the parent process.
 
@@ -112,7 +113,7 @@ def _benchmark_worker_entry(
         std_throughput = float(_np.std(throughputs)) if throughputs else 0.0
 
         # MPI world size and hostname for traceability
-        world_size = int(os.environ.get('OMPI_COMM_WORLD_SIZE', '1'))
+        world_size = get_world_size()
         hostname = _socket.gethostname()
 
         # Include only implementation default option keys in the result row
@@ -233,8 +234,7 @@ class PrimitiveBenchmarkRunner:
         results = []
 
         # Determine rank without initializing CUDA context
-        rank_env = os.environ.get('OMPI_COMM_WORLD_RANK')
-        rank = int(rank_env) if rank_env is not None else 0
+        rank = get_rank()
 
         # Helper lambda for tqdm iterator creation
         create_tqdm = lambda iterable, **kwargs: tqdm(iterable, **kwargs) if rank == 0 else iterable
