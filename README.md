@@ -4,11 +4,13 @@ A library for benchmarking distributed deep learning primitives and operations a
 
 ## Features
 
-- TP-columnwise primitives
+- **TP-Columnwise primitives**: Tensor parallel operations with column-wise sharding
+- **TP-Rowwise primitives**: Sequence and Tensor parallel operations with row-wise sharding
 - Support for multiple implementations:
   - PyTorch Distributed with various backends (NCCL, UCC/TL)
   - nvFuser with different communications backends and algorithms (including pipelines for comm/compute overlap) 
   - Compute-only reference implementations
+  - JAX and Transformer Engine implementations
 - Configurable benchmark parameters via JSON
 - Automatic validation of results
 - Performance visualization
@@ -73,10 +75,23 @@ Example JSON:
 
 Run directly via the CLI module and pass all parameters as flags.
 
-Quick smoke test (single process):
+Quick smoke test for TP-Columnwise:
 ```bash
 mpirun -np 4 python ddlb/cli/benchmark.py \
   --primitive tp_columnwise \
+  -m 1024 \
+  -n 128 \
+  -k 1024 \
+  --dtype float16 \
+  --num-iterations 5 \
+  --num-warmups 2 \
+  --impl pytorch;backend=nccl
+```
+
+Quick smoke test for TP-Rowwise (with sequence parallelism):
+```bash
+mpirun -np 4 python ddlb/cli/benchmark.py \
+  --primitive tp_rowwise \
   -m 1024 \
   -n 128 \
   -k 1024 \
