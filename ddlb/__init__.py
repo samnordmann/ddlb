@@ -14,16 +14,17 @@ __all__ = [
     "PyTorchTPColumnwise",
     "TPRowwise",
     "PyTorchTPRowwise",
+    "FuserTPRowwise",
 ]
 
 if _typing.TYPE_CHECKING:
     from .benchmark import PrimitiveBenchmarkRunner  # noqa: F401
-    from .primitives import TPColumnwise, PyTorchTPColumnwise, TPRowwise, PyTorchTPRowwise  # noqa: F401
+    from .primitives import TPColumnwise, PyTorchTPColumnwise, TPRowwise, PyTorchTPRowwise, FuserTPRowwise  # noqa: F401
 
 
 def __getattr__(name):
     if name == 'PrimitiveBenchmarkRunner':
         return importlib.import_module('.benchmark', __name__).PrimitiveBenchmarkRunner
-    if name in ('TPColumnwise', 'PyTorchTPColumnwise', 'TPRowwise', 'PyTorchTPRowwise'):
+    if name in ('TPColumnwise', 'PyTorchTPColumnwise', 'TPRowwise', 'PyTorchTPRowwise', 'FuserTPRowwise'):
         return getattr(importlib.import_module('.primitives', __name__), name)
     raise AttributeError(f"module {__name__} has no attribute {name}")
