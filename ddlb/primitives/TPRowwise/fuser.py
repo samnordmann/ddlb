@@ -29,19 +29,19 @@ class MatmulRsFusion(FusionDefinition):
             self._num_devices,
         )
         self.A = self.define_tensor(
-            shape=[d, d, m // d, k // d], contiguity=True, dtype=torch_dtype_to_nvfuser_dtype(self.dtype) # [didx(d), d, m/d, k/d]
+            shape=[d, m, k // d], contiguity=True, dtype=torch_dtype_to_nvfuser_dtype(self.dtype) # [didx(d), m, k/d]
         )
         self.B = self.define_tensor(
             shape=[d, k // d, n], contiguity=True, dtype=torch_dtype_to_nvfuser_dtype(self.dtype) # [didx(d), k/d, n]
         )
 
-        self.broadcast_B = self.ops.broadcast(self.B, [False, True, False, False]) # [didx(d), k/d, n] -> [didx(d), 1, k/d, n]
-
-        self.C_unreduced = self.ops.matmul(
-            self.A, self.broadcast_B # [d, didx(d), m/d, n]
+        self.C_mm = self.ops.matmul(
+            self.A, self.B # [didx(d), m, n]
         )
 
-        self.C = self.ops.sum(self.C_unreduced, 0) # [r(d), didx(d), m/d, n]
+        self.C_reshaped = self.ops.reshape(self.C_mm, [d, d, m // d, n]) # [didx(d), d, m/d, n]
+
+        self.C = self.ops.sum(self.C_reshaped, 0) # [r(d), didx(d), m/d, n]
 
         self.add_output(self.C)
 
@@ -49,18 +49,14 @@ class MatmulRsFusion(FusionDefinition):
         mesh = nvfuser.multidevice.DeviceMesh(range(self._num_devices))
         for tv in [
             self.A,
-            self.B, self.broadcast_B,
-            self.C_unreduced,
-            self.C,
+            self.B,
+            self.C_mm,
+            self.C_reshaped,
         ]:
             tv.set_device_mesh(mesh)
-
-        # Only the reduced dimension (d) is actually sharded, M is split
-        # logically for convenience
-        self.A.axis(0).parallelize(ParallelType.mesh_x)
-        self.B.axis(0).parallelize(ParallelType.mesh_x)
-        self.broadcast_B.axis(0).parallelize(ParallelType.mesh_x)
-        self.C_unreduced.axis(1).parallelize(ParallelType.mesh_x)
+            tv.axis(0).parallelize(ParallelType.mesh_x)
+        
+        self.C.set_device_mesh(mesh)
         self.C.axis(1).parallelize(ParallelType.mesh_x)
 
 class MatmulRsCollectiveBasedPipelineFusion(FusionDefinition):
@@ -266,17 +262,16 @@ class FuserTPRowwise(TPRowwise):
             torch.Tensor: Result matrix of shape (m_local, n) where m_local = m // world_size
         """
         A, B = self.get_inputs()
-        # A is [didx(d), d, m//d, k//d], B is [didx(d), k//d, n]
-        # C will be [r(d), didx(d), m/d, n] after reduce-scatter
         if self.algorithm == 'default':
             A = A.unsqueeze(0)
-            A = A.view(1, self.communicator.world_size, self.m//self.communicator.world_size, self.k//self.communicator.world_size)
             B = B.unsqueeze(0)
             C = self.multidevice_executor.run([A, B])[0]
-            C = C.reshape(self.m // self.communicator.world_size, self.n)
+            C = C.squeeze(0)
         elif self.algorithm == 'coll_pipeline':  # coll_pipeline
             raise NotImplementedError("Collective-based pipeline not implemented for nvFuser")
         elif self.algorithm == 'p2p_pipeline':  # p2p_pipeline
+            # A is [didx(d), d, m//d, k//d], B is [didx(d), k//d, n]
+            # C will be [r(d), didx(d), m/d, n] after reduce-scatter
             A = A.unsqueeze(0)
             A = A.view(1, self.communicator.world_size, self.m//self.communicator.world_size, self.k//self.communicator.world_size)
             B = B.unsqueeze(0)
