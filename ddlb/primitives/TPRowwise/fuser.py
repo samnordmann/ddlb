@@ -50,7 +50,7 @@ class MatmulRsFusion(FusionDefinition):
         mesh = nvfuser.multidevice.DeviceMesh(range(self._num_devices))
         for tv in [
             self.A,
-            self.B,
+            self.B, self.broadcast_B,
             self.C_unreduced,
             self.C,
         ]:
@@ -59,9 +59,11 @@ class MatmulRsFusion(FusionDefinition):
         # Only the reduced dimension (d) is actually sharded, M is split
         # logically for convenience
         self.A.axis(0).parallelize(ParallelType.mesh_x)
+        self.A.axis(1).parallelize(ParallelType.stream)
         self.B.axis(0).parallelize(ParallelType.mesh_x)
         self.broadcast_B.axis(0).parallelize(ParallelType.mesh_x)
         self.C_unreduced.axis(1).parallelize(ParallelType.mesh_x)
+        self.C_unreduced.axis(0).parallelize(ParallelType.stream)
         self.C.axis(1).parallelize(ParallelType.mesh_x)
 
 class MatmulRsCollectiveBasedPipelineFusion(FusionDefinition):
@@ -258,7 +260,8 @@ class FuserTPRowwise(TPRowwise):
             # A is [didx(d), d, m//d, k//d], B is [didx(d), k//d, n]
             # C will be [r(d), didx(d), m/d, n] after reduce-scatter
             A = A.unsqueeze(0)
-            A = A.view(1, self.communicator.world_size, m//d, k//d)
+            A = A.view(1, self.communicator.world_size, self.m//self.communicator.world_size, self.k//self.communicator.world_size)
+            B = B.unsqueeze(0)
             C = self.multidevice_executor.run([A, B])[0]
             C = C.reshape(self.m // self.communicator.world_size, self.n)
         elif self.algorithm == 'coll_pipeline':  # coll_pipeline
