@@ -12,7 +12,6 @@ from nvfuser_direct.pytorch_utils import torch_dtype_to_nvfuser_dtype
 from .tp_rowwise import TPRowwise
 from .utils import EnvVarGuard, setup_ucc_env_vars
 
-
 class MatmulRsFusion(FusionDefinition):
     def __init__(self, dtype, m, k, n, num_devices):
         super().__init__()
@@ -59,11 +58,9 @@ class MatmulRsFusion(FusionDefinition):
         # Only the reduced dimension (d) is actually sharded, M is split
         # logically for convenience
         self.A.axis(0).parallelize(ParallelType.mesh_x)
-        self.A.axis(1).parallelize(ParallelType.stream)
         self.B.axis(0).parallelize(ParallelType.mesh_x)
         self.broadcast_B.axis(0).parallelize(ParallelType.mesh_x)
         self.C_unreduced.axis(1).parallelize(ParallelType.mesh_x)
-        self.C_unreduced.axis(0).parallelize(ParallelType.stream)
         self.C.axis(1).parallelize(ParallelType.mesh_x)
 
 class MatmulRsCollectiveBasedPipelineFusion(FusionDefinition):
@@ -126,18 +123,22 @@ class MatmulRsP2PBasedPipelineFusion(FusionDefinition):
             self.m,
             self.k,
             self.n,
-            self._num_devices
+            self._num_devices,
         )
         self.A = self.define_tensor(
-            shape=[d, m // d, k // d], contiguity=True, dtype=torch_dtype_to_nvfuser_dtype(self.dtype)
+            shape=[d, d, m // d, k // d], contiguity=True, dtype=torch_dtype_to_nvfuser_dtype(self.dtype) # [didx(d), stream(d), m/d, k/d]
         )
         self.B = self.define_tensor(
-            shape=[k // d, n], contiguity=True, dtype=torch_dtype_to_nvfuser_dtype(self.dtype)
+            shape=[d, k // d, n], contiguity=True, dtype=torch_dtype_to_nvfuser_dtype(self.dtype) # [didx(d), k/d, n]
         )
 
-        self.C = self.ops.matmul(
-            self.A, self.B
-        ) 
+        self.broadcast_B = self.ops.broadcast(self.B, [False, True, False, False]) # [didx(d), k/d, n] -> [didx(d), 1, k/d, n]
+
+        self.C_unreduced = self.ops.matmul(
+            self.A, self.broadcast_B # [stream(d), didx(d), m/d, n]
+        )
+
+        self.C = self.ops.sum(self.C_unreduced, 0) # [r(d), didx(d), m/d, n]
 
         self.add_output(self.C)
 
@@ -145,16 +146,21 @@ class MatmulRsP2PBasedPipelineFusion(FusionDefinition):
         mesh = nvfuser.multidevice.DeviceMesh(range(self._num_devices))
         for tv in [
             self.A,
-            self.B,
+            self.B, self.broadcast_B,
+            self.C_unreduced,
             self.C,
         ]:
             tv.set_device_mesh(mesh)
 
-        # A is already sharded along dimension 0 (device dimension)
+        # Only the reduced dimension (d) is actually sharded, M is split
+        # logically for convenience
         self.A.axis(0).parallelize(ParallelType.mesh_x)
-        # Pipeline along the stream dimension
-        self.C.axis(0).parallelize(ParallelType.stream)
-
+        self.A.axis(1).parallelize(ParallelType.stream)
+        self.B.axis(0).parallelize(ParallelType.mesh_x)
+        self.broadcast_B.axis(0).parallelize(ParallelType.mesh_x)
+        self.C_unreduced.axis(1).parallelize(ParallelType.mesh_x)
+        self.C_unreduced.axis(0).parallelize(ParallelType.stream)
+        self.C.axis(1).parallelize(ParallelType.mesh_x)
 
 class FuserTPRowwise(TPRowwise):
     """
@@ -256,35 +262,21 @@ class FuserTPRowwise(TPRowwise):
             torch.Tensor: Result matrix of shape (m_local, n) where m_local = m // world_size
         """
         A, B = self.get_inputs()
+        # A is [didx(d), d, m//d, k//d], B is [didx(d), k//d, n]
+        # C will be [r(d), didx(d), m/d, n] after reduce-scatter
         if self.algorithm == 'default':
-            # A is [didx(d), d, m//d, k//d], B is [didx(d), k//d, n]
-            # C will be [r(d), didx(d), m/d, n] after reduce-scatter
             A = A.unsqueeze(0)
             A = A.view(1, self.communicator.world_size, self.m//self.communicator.world_size, self.k//self.communicator.world_size)
             B = B.unsqueeze(0)
             C = self.multidevice_executor.run([A, B])[0]
             C = C.reshape(self.m // self.communicator.world_size, self.n)
         elif self.algorithm == 'coll_pipeline':  # coll_pipeline
-            # Reshape A for pipeline algorithm
-            # A is [m, k/d], we want to reshape it to [s, m/s, k/d]
-            A = A.reshape(self.s, A.shape[0] // self.s, A.shape[1])
-            # C will be [s, d, m/(d*s), n] after reduce-scatter
-            C = self.multidevice_executor.run([A, B])[0]
-            # Extract this rank's shard: C[:, rank, :, :]
-            C = C[:, self.communicator.rank, :, :]
-            # Reshape to [m/d, n]
-            chunk_size = self.m // self.communicator.world_size
-            C = C.reshape(chunk_size, self.n)
+            raise NotImplementedError("Collective-based pipeline not implemented for nvFuser")
         elif self.algorithm == 'p2p_pipeline':  # p2p_pipeline
-            # A needs to be shaped as [d, m/d, k/d]
-            # We need to replicate A across the device dimension
-            A = A.unsqueeze(0).expand(self.communicator.world_size, -1, -1).contiguous()
-            # C will be [d, d, m/d, n] after the operation
+            A = A.unsqueeze(0)
+            A = A.view(1, self.communicator.world_size, self.m//self.communicator.world_size, self.k//self.communicator.world_size)
+            B = B.unsqueeze(0)
             C = self.multidevice_executor.run([A, B])[0]
-            # Extract this rank's shard: C[:, rank, :, :]
-            # Then sum along the first dimension for reduce
-            C = C[:, self.communicator.rank, :, :]
-            # Sum across the device dimension to get the reduced result
-            C = C.sum(dim=0)
+            C = C.reshape(self.m // self.communicator.world_size, self.n)
         return C
 
