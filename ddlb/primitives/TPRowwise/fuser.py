@@ -234,6 +234,10 @@ class FuserTPRowwise(TPRowwise):
             )
         elif self.algorithm == 'p2p_pipeline':  # p2p_pipeline
             assert self.m % self.communicator.world_size == 0, "m must be divisible by world_size"
+            assert self.k % self.communicator.world_size == 0, "k must be divisible by world_size"
+            self.s = self.options['s']
+            if self.s != self.communicator.world_size:
+                print(f"Warning: s={self.s} is not equal to world_size={self.communicator.world_size} for p2p_pipeline algorithm. Ignoring s and using world_size instead.")
             self.fusion = MatmulRsP2PBasedPipelineFusion(
                 self.torch_dtype,
                 self.m,
