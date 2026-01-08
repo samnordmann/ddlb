@@ -90,7 +90,7 @@ class MatmulRsCollectiveBasedPipelineFusion(FusionDefinition):
 
         self.C_reshaped = self.ops.reshape(self.C_unreduced, [s, d, d, m // (s * d), n]) # [stream(s), didx(d), d, m/(s*d), n]
 
-        self.C = self.ops.sum(self.C_reshaped, 2) # [stream(s), didx(d), r(d), m/(s*d), n]
+        self.C = self.ops.sum(self.C_reshaped, 1) # [stream(s), r(d), didx(d), m/(s*d), n]
 
         self.add_output(self.C)
 
@@ -112,7 +112,7 @@ class MatmulRsCollectiveBasedPipelineFusion(FusionDefinition):
         self.C_reshaped.axis(0).parallelize(ParallelType.stream)
         self.C_reshaped.axis(1).parallelize(ParallelType.mesh_x)
         self.C.axis(0).parallelize(ParallelType.stream)
-        self.C.axis(1).parallelize(ParallelType.mesh_x)
+        self.C.axis(2).parallelize(ParallelType.mesh_x)
 
 class MatmulRsP2PBasedPipelineFusion(FusionDefinition):
     def __init__(self, dtype, m, k, n, num_devices, communication_backend):
@@ -276,11 +276,9 @@ class FuserTPRowwise(TPRowwise):
             C = self.multidevice_executor.run([A, B])[0]
             C = C.squeeze(0)
         elif self.algorithm == 'coll_pipeline':  # coll_pipeline
-            A = A.unsqueeze(0)
-            A = A.view(self.s, self.communicator.world_size, self.m//self.s, self.k//self.communicator.world_size) # [s, didx(d), m/s, k/d]
+            A = A.view(self.s, 1, self.m//self.s, self.k//self.communicator.world_size) # [s, didx(d), m/s, k/d]
             B = B.unsqueeze(0) # [k/d, n] -> [didx(d), k/d, n]
             C = self.multidevice_executor.run([A, B])[0]
-            C = C.squeeze(1) # remove this line?
             C = C.reshape(self.m // self.communicator.world_size, self.n)
         elif self.algorithm == 'p2p_pipeline':  # p2p_pipeline
             # A is [didx(d), d, m//d, k//d], B is [didx(d), k//d, n]
