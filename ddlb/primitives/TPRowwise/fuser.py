@@ -78,17 +78,19 @@ class MatmulRsCollectiveBasedPipelineFusion(FusionDefinition):
             self.s,
         )
         self.A = self.define_tensor(
-            shape=[d, s, d, m // (s*d), k // d], contiguity=True, dtype=torch_dtype_to_nvfuser_dtype(self.dtype) # [didx(d), s, d, m/(s*d), k/d]
+            shape=[s, d, d, m // (s*d), k // d], contiguity=True, dtype=torch_dtype_to_nvfuser_dtype(self.dtype) # [s, didx(d), d, m/(s*d), k/d]
         )
         self.B = self.define_tensor(
-            shape=[d, 1, 1, k // d, n], contiguity=True, dtype=torch_dtype_to_nvfuser_dtype(self.dtype) # [didx(d), 1, 1, k/d, n]
+            shape=[1, k // d, n], contiguity=True, dtype=torch_dtype_to_nvfuser_dtype(self.dtype) # [didx(d), k/d, n]
         )
+
+        self.broadcast_B = self.ops.broadcast(self.B, [True, False, True, False, False]) # [1, didx(d), 1, k/d, n]
 
         self.C_unreduced = self.ops.matmul(
-            self.A, self.B # [didx(d), stream(s), d, m/(s*d), n]
+            self.A, self.broadcast_B # [stream(s), didx(d), d, m/(s*d), n]
         )
 
-        self.C = self.ops.sum(self.C_unreduced, 0) # [r(d), stream(s), didx(d), m/(s*d), n]
+        self.C = self.ops.sum(self.C_unreduced, 1) # [stream(s), r(d), didx(d), m/(s*d), n]
 
         self.add_output(self.C)
 
@@ -97,16 +99,18 @@ class MatmulRsCollectiveBasedPipelineFusion(FusionDefinition):
         for tv in [
             self.A,
             self.B,
+            self.broadcast_B,
             self.C_unreduced,
             self.C,
         ]:
             tv.set_device_mesh(mesh)
 
-        self.A.axis(0).parallelize(ParallelType.mesh_x)
+        self.A.axis(1).parallelize(ParallelType.mesh_x)
         self.B.axis(0).parallelize(ParallelType.mesh_x)
-        self.C_unreduced.axis(0).parallelize(ParallelType.mesh_x)
-        self.C_unreduced.axis(1).parallelize(ParallelType.stream)
-        self.C.axis(1).parallelize(ParallelType.stream)
+        self.broadcast_B.axis(1).parallelize(ParallelType.mesh_x)
+        self.C_unreduced.axis(0).parallelize(ParallelType.stream)
+        self.C_unreduced.axis(1).parallelize(ParallelType.mesh_x)
+        self.C.axis(0).parallelize(ParallelType.stream)
         self.C.axis(2).parallelize(ParallelType.mesh_x)
 
 class MatmulRsP2PBasedPipelineFusion(FusionDefinition):
@@ -272,10 +276,10 @@ class FuserTPRowwise(TPRowwise):
             C = self.multidevice_executor.run([A, B])[0]
             C = C.squeeze(0)
         elif self.algorithm == 'coll_pipeline':  # coll_pipeline
-            A = A.view(1, self.s, self.communicator.world_size, self.m//(self.s*self.communicator.world_size), self.k//self.communicator.world_size) # [didx(d), m, k//d] -> [didx(d), s, d, m/(s*d), k/d]
-            B = B.view(1, 1, 1, self.k // self.communicator.world_size, self.n) # [k/d, n] -> [didx(d), 1, 1, k/d, n]
-            C = self.multidevice_executor.run([A, B])[0] # [r(d), stream(s), didx(d), m/(s*d), n]
-            C = C.reshape(self.m // self.communicator.world_size, self.n)
+            A = A.view(self.s, 1, self.communicator.world_size, self.m//(self.s*self.communicator.world_size), self.k//self.communicator.world_size) # [didx(d), m, k//d] -> [s, didx(d), d, m/(s*d), k/d]
+            B = B.unsqueeze(0)
+            C = self.multidevice_executor.run([A, B])[0] # [r(d), didx(d), m/d, n]
+            C = C.view(self.m // self.communicator.world_size, self.n)
         elif self.algorithm == 'p2p_pipeline':  # p2p_pipeline
             # A is [didx(d), d, m//d, k//d], B is [didx(d), k//d, n]
             # C will be [r(d), didx(d), m/d, n] after reduce-scatter
