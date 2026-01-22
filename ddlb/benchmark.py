@@ -48,6 +48,7 @@ def _benchmark_worker_entry(
             'tp_rowwise': {
                 'pytorch': ('ddlb.primitives.TPRowwise.pytorch', 'PyTorchTPRowwise'),
                 'fuser': ('ddlb.primitives.TPRowwise.fuser', 'FuserTPRowwise'),
+                'transformer_engine': ('ddlb.primitives.TPRowwise.transformer_engine', 'TransformerEngineTPRowwise'),
             },
         }
         

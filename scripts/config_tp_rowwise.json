@@ -10,6 +10,19 @@
         "num_warmups": 5,
         "output_csv": "results/tp_rowwise_results_{timestamp}.csv",
         "implementations": {
+            "transformer_engine": [
+                {}
+            ],
+            "fuser": [
+                {
+                    "algorithm": ["default"],
+                    "backend": ["nccl"]
+                },
+                {
+                    "algorithm": ["p2p_pipeline"],
+                    "backend": ["cuda"]
+                }
+            ],
             "pytorch": [
                 {
                     "backend": ["nccl"]
