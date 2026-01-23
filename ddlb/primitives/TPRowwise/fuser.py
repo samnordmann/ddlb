@@ -287,6 +287,6 @@ class FuserTPRowwise(TPRowwise):
             A = A.view(1, self.communicator.world_size, self.m//self.communicator.world_size, self.k//self.communicator.world_size)
             B = B.unsqueeze(0)
             C = self.multidevice_executor.run([A, B])[0]
-            C = C.reshape(self.m // self.communicator.world_size, self.n)
+            C = C.view(self.m // self.communicator.world_size, self.n)
         return C
 

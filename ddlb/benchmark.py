@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+import nvtx
 from ddlb.envs import get_world_size, get_rank
 
 # Avoid importing CUDA-dependent primitives in the parent process.
@@ -100,8 +101,24 @@ def _benchmark_worker_entry(
         except Exception:
             pass
 
+        # Include only implementation default option keys in the result row
+        default_option_keys = list(getattr(impl_class, 'DEFAULT_OPTIONS', {}).keys())
+        impl_option_values = {k: options[k] for k in default_option_keys if k in options}
+        # Exclude size from CSV columns and labels
+        filtered_impl_option_values = {k: v for k, v in impl_option_values.items() if k != 'size'}
+
+        # Human-readable implementation label with options (excluding size)
+        impl_label = base_impl
+        if filtered_impl_option_values:
+            impl_label += f" (" + ", ".join(f"{k}={v}" for k, v in filtered_impl_option_values.items()) + ")"
+
+        # Consolidate implementation options into a single string column 'option'
+        ordered_option_keys = [k for k in getattr(impl_class, 'DEFAULT_OPTIONS', {}).keys() if k in filtered_impl_option_values]
+        option_str = ", ".join(f"{k}={filtered_impl_option_values[k]}" for k in ordered_option_keys)
+
         for i in range(num_warmups):
-            impl.run()
+            with nvtx.annotate(f"Warmup {i} {impl_label} {option_str}", color="red"):
+                impl.run()
 
         # CUDA timing events
         start_events = [torch.cuda.Event(enable_timing=True) for _ in range(num_iterations)]
@@ -110,7 +127,8 @@ def _benchmark_worker_entry(
         last_result = None
         for i in range(num_iterations):
             start_events[i].record()
-            last_result = impl.run()
+            with nvtx.annotate(f"Iteration {i} {impl_label} {option_str}", color="red"):
+                last_result = impl.run()
             end_events[i].record()
 
         torch.cuda.synchronize()
@@ -128,21 +146,6 @@ def _benchmark_worker_entry(
         # MPI world size and hostname for traceability
         world_size = get_world_size()
         hostname = _socket.gethostname()
-
-        # Include only implementation default option keys in the result row
-        default_option_keys = list(getattr(impl_class, 'DEFAULT_OPTIONS', {}).keys())
-        impl_option_values = {k: options[k] for k in default_option_keys if k in options}
-        # Exclude size from CSV columns and labels
-        filtered_impl_option_values = {k: v for k, v in impl_option_values.items() if k != 'size'}
-
-        # Human-readable implementation label with options (excluding size)
-        impl_label = base_impl
-        if filtered_impl_option_values:
-            impl_label += f" (" + ", ".join(f"{k}={v}" for k, v in filtered_impl_option_values.items()) + ")"
-
-        # Consolidate implementation options into a single string column 'option'
-        ordered_option_keys = [k for k in getattr(impl_class, 'DEFAULT_OPTIONS', {}).keys() if k in filtered_impl_option_values]
-        option_str = ", ".join(f"{k}={filtered_impl_option_values[k]}" for k in ordered_option_keys)
 
         result_row = {
             'implementation': impl_label,
