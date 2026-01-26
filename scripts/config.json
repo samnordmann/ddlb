@@ -8,6 +8,8 @@
         "validate": true,
         "num_iterations": 50,
         "num_warmups": 5,
+        "time_measurement_backend": "cpu_clock", // possible values: "cpu_clock", "cuda_event"
+        "barrier_at_each_iteration": true,
         "output_csv": "results/tp_columnwise_results_{timestamp}.csv",
         "implementations": {
             "compute_only": [
