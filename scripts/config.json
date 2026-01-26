@@ -1,9 +1,9 @@
 {
     "benchmark": {
         "primitive": "tp_columnwise",
-        "m": [1024, 8192, 16384, 32768],
-        "n": [128, 1024, 16384],
-        "k": [1024, 8192, 16384],
+        "m": [512, 1024, 2048, 8192, 16384],
+        "n": [512, 1024, 2048, 8192, 16384],
+        "k": [512, 1024, 2048, 8192, 16384],
         "dtype": "float16",
         "validate": true,
         "num_iterations": 50,
@@ -18,27 +18,28 @@
                 }
             ],
             "pytorch": [
-                {
-                    "backend": ["nccl"],
-                    "order": ["AG_before", "AG_after"]
-                }
+                {}
             ],
             "fuser": [
                 {
                     "algorithm": ["default"],
                     "backend": ["nccl"],
-                    "order": ["AG_before"]
+                },
+                {
+                    "algorithm": ["default"],
+                    "backend": ["cuda"],
+                    "multicast_protocol": ["memcpy", "multicast"]
+                },
+                {
+                    "algorithm": ["p2p_pipeline"],
+                    "backend": ["nccl"]
                 },
                 {
                     "algorithm": ["p2p_pipeline"],
                     "backend": ["cuda"],
-                    "order": ["AG_before"]
-                },
-                {
-                    "algorithm": ["coll_pipeline"],
-                    "backend": ["ucc/tl/nccl"],
-                    "order": ["AG_before"],
-                    "s": [8]
+                    "inter_stream_synchronization": [true, false],
+                    "offset_stream_indexing_by_rank": [true],
+                    "multicast_protocol": ["memcpy", "multicast"]
                 }
             ],
             "transformer_engine": [
