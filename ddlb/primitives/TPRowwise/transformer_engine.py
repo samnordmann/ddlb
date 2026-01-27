@@ -65,7 +65,8 @@ class TransformerEngineTPRowwise(TPRowwise):
             sequence_parallel=True,
             parallel_mode='row',
             tp_group=self.tp_group,
-            ub_overlap_ag=True,
+            ub_overlap_rs=True,
+            ub_tp_comm_overlap=True,
             tp_size=self.communicator.world_size,
             ub_name="qkv"
         )
