@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+import nvtx
 from ddlb.envs import get_world_size, get_rank
 
 # Avoid importing CUDA-dependent primitives in the parent process.
@@ -27,25 +28,38 @@ def _benchmark_worker_entry(
     impl_opts: Dict,
     validate: bool,
     result_queue,
+    primitive: str,
 ):
     # Import CUDA-dependent libraries inside child process only and lazily
     import torch
     import numpy as _np
     import importlib as _importlib
     import socket as _socket
-    from ddlb.primitives import TPColumnwise as _TPBase
 
-    def _load_impl_class(base_impl: str):
-        # Map name to submodule path and class name
-        mapping = {
-            'pytorch': ('ddlb.primitives.TPColumnwise.pytorch', 'PyTorchTPColumnwise'),
-            'compute_only': ('ddlb.primitives.TPColumnwise.compute_only', 'ComputeOnlyTPColumnwise'),
-            'fuser': ('ddlb.primitives.TPColumnwise.fuser', 'FuserTPColumnwise'),
-            'transformer_engine': ('ddlb.primitives.TPColumnwise.transformer_engine', 'TransformerEngineTPColumnwise'),
-            'jax': ('ddlb.primitives.TPColumnwise.jax_tp', 'JAXTPColumnwise'),
+    def _load_impl_class(base_impl: str, primitive: str):
+        # Map primitive and implementation to submodule path and class name
+        primitive_mappings = {
+            'tp_columnwise': {
+                'pytorch': ('ddlb.primitives.TPColumnwise.pytorch', 'PyTorchTPColumnwise'),
+                'compute_only': ('ddlb.primitives.TPColumnwise.compute_only', 'ComputeOnlyTPColumnwise'),
+                'fuser': ('ddlb.primitives.TPColumnwise.fuser', 'FuserTPColumnwise'),
+                'transformer_engine': ('ddlb.primitives.TPColumnwise.transformer_engine', 'TransformerEngineTPColumnwise'),
+                'jax': ('ddlb.primitives.TPColumnwise.jax_tp', 'JAXTPColumnwise'),
+            },
+            'tp_rowwise': {
+                'pytorch': ('ddlb.primitives.TPRowwise.pytorch', 'PyTorchTPRowwise'),
+                'fuser': ('ddlb.primitives.TPRowwise.fuser', 'FuserTPRowwise'),
+                'transformer_engine': ('ddlb.primitives.TPRowwise.transformer_engine', 'TransformerEngineTPRowwise'),
+            },
         }
+        
+        if primitive not in primitive_mappings:
+            raise ValueError(f"Unknown primitive: {primitive}")
+        
+        mapping = primitive_mappings[primitive]
         if base_impl not in mapping:
-            raise ValueError(f"Unknown implementation: {base_impl}")
+            raise ValueError(f"Unknown implementation '{base_impl}' for primitive '{primitive}'")
+        
         module_path, class_name = mapping[base_impl]
         module = _importlib.import_module(module_path)
         return getattr(module, class_name)
@@ -56,7 +70,7 @@ def _benchmark_worker_entry(
     else:
         base_impl = impl_id
 
-    impl_class = _load_impl_class(base_impl)
+    impl_class = _load_impl_class(base_impl, primitive)
     options = getattr(impl_class, 'DEFAULT_OPTIONS', {}).copy()
     options.update({k: v for k, v in impl_opts.items() if k in options})
 
@@ -87,8 +101,24 @@ def _benchmark_worker_entry(
         except Exception:
             pass
 
+        # Include only implementation default option keys in the result row
+        default_option_keys = list(getattr(impl_class, 'DEFAULT_OPTIONS', {}).keys())
+        impl_option_values = {k: options[k] for k in default_option_keys if k in options}
+        # Exclude size from CSV columns and labels
+        filtered_impl_option_values = {k: v for k, v in impl_option_values.items() if k != 'size'}
+
+        # Human-readable implementation label with options (excluding size)
+        impl_label = base_impl
+        if filtered_impl_option_values:
+            impl_label += f" (" + ", ".join(f"{k}={v}" for k, v in filtered_impl_option_values.items()) + ")"
+
+        # Consolidate implementation options into a single string column 'option'
+        ordered_option_keys = [k for k in getattr(impl_class, 'DEFAULT_OPTIONS', {}).keys() if k in filtered_impl_option_values]
+        option_str = ", ".join(f"{k}={filtered_impl_option_values[k]}" for k in ordered_option_keys)
+
         for i in range(num_warmups):
-            impl.run()
+            with nvtx.annotate(f"Warmup {i} {impl_label} {option_str}", color="red"):
+                impl.run()
 
         # CUDA timing events
         start_events = [torch.cuda.Event(enable_timing=True) for _ in range(num_iterations)]
@@ -97,7 +127,8 @@ def _benchmark_worker_entry(
         last_result = None
         for i in range(num_iterations):
             start_events[i].record()
-            last_result = impl.run()
+            with nvtx.annotate(f"Iteration {i} {impl_label} {option_str}", color="red"):
+                last_result = impl.run()
             end_events[i].record()
 
         torch.cuda.synchronize()
@@ -115,21 +146,6 @@ def _benchmark_worker_entry(
         # MPI world size and hostname for traceability
         world_size = get_world_size()
         hostname = _socket.gethostname()
-
-        # Include only implementation default option keys in the result row
-        default_option_keys = list(getattr(impl_class, 'DEFAULT_OPTIONS', {}).keys())
-        impl_option_values = {k: options[k] for k in default_option_keys if k in options}
-        # Exclude size from CSV columns and labels
-        filtered_impl_option_values = {k: v for k, v in impl_option_values.items() if k != 'size'}
-
-        # Human-readable implementation label with options (excluding size)
-        impl_label = base_impl
-        if filtered_impl_option_values:
-            impl_label += f" (" + ", ".join(f"{k}={v}" for k, v in filtered_impl_option_values.items()) + ")"
-
-        # Consolidate implementation options into a single string column 'option'
-        ordered_option_keys = [k for k in getattr(impl_class, 'DEFAULT_OPTIONS', {}).keys() if k in filtered_impl_option_values]
-        option_str = ", ".join(f"{k}={filtered_impl_option_values[k]}" for k in ordered_option_keys)
 
         result_row = {
             'implementation': impl_label,
@@ -176,7 +192,7 @@ pd.set_option('display.max_colwidth', None)
 class PrimitiveBenchmarkRunner:
     """Main class for running distributed primitive benchmarks."""
     
-    ALLOWED_PRIMITIVES = {'tp_columnwise'}
+    ALLOWED_PRIMITIVES = {'tp_columnwise', 'tp_rowwise'}
     
     def __init__(
         self,
@@ -196,7 +212,7 @@ class PrimitiveBenchmarkRunner:
         Initialize the benchmark runner.
         
         Args:
-            primitive: Name of the primitive to benchmark ('tp_columnwise')
+            primitive: Name of the primitive to benchmark ('tp_columnwise' or 'tp_rowwise')
             m: Number of rows in first matrix
             n: Number of columns in second matrix
             k: Number of columns in first matrix / rows in second matrix
@@ -269,7 +285,7 @@ class PrimitiveBenchmarkRunner:
             result_queue = ctx.SimpleQueue()
             proc = ctx.Process(
                 target=_benchmark_worker_entry,
-                args=(impl_id, self.m, self.n, self.k, self.dtype, self.num_warmups, self.num_iterations, impl_opts, self.validate, result_queue),
+                args=(impl_id, self.m, self.n, self.k, self.dtype, self.num_warmups, self.num_iterations, impl_opts, self.validate, result_queue, self.primitive),
             )
             proc.start()
             result_row = result_queue.get()
