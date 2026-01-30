@@ -133,13 +133,11 @@ class MatmulRsP2PBasedPipelineFusion(FusionDefinition):
             shape=[d, d, m // d, k // d], contiguity=True, dtype=torch_dtype_to_nvfuser_dtype(self.dtype) # [didx(d), stream(d), m/d, k/d]
         )
         self.B = self.define_tensor(
-            shape=[d, k // d, n], contiguity=True, dtype=torch_dtype_to_nvfuser_dtype(self.dtype) # [didx(d), k/d, n]
+            shape=[d, 1, k // d, n], contiguity=True, dtype=torch_dtype_to_nvfuser_dtype(self.dtype) # [didx(d), k/d, n]
         )
 
-        self.broadcast_B = self.ops.broadcast(self.B, [False, True, False, False]) # [didx(d), k/d, n] -> [didx(d), 1, k/d, n]
-
         self.C_unreduced = self.ops.matmul(
-            self.A, self.broadcast_B # [stream(d), didx(d), m/d, n]
+            self.A, self.B # [stream(d), didx(d), m/d, n]
         )
 
         self.C = self.ops.sum(self.C_unreduced, 0) # [r(d), didx(d), m/d, n]
@@ -150,7 +148,7 @@ class MatmulRsP2PBasedPipelineFusion(FusionDefinition):
         mesh = nvfuser.multidevice.DeviceMesh(range(self._num_devices))
         for tv in [
             self.A,
-            self.B, self.broadcast_B,
+            self.B,
             self.C_unreduced,
             self.C,
         ]:
@@ -161,7 +159,6 @@ class MatmulRsP2PBasedPipelineFusion(FusionDefinition):
         self.A.axis(0).parallelize(ParallelType.mesh_x)
         self.A.axis(1).parallelize(ParallelType.stream)
         self.B.axis(0).parallelize(ParallelType.mesh_x)
-        self.broadcast_B.axis(0).parallelize(ParallelType.mesh_x)
         self.C_unreduced.axis(1).parallelize(ParallelType.mesh_x)
         self.C_unreduced.axis(0).parallelize(ParallelType.stream)
         self.C.axis(1).parallelize(ParallelType.mesh_x)
@@ -286,6 +283,7 @@ class FuserTPRowwise(TPRowwise):
             A = A.unsqueeze(0)
             A = A.view(1, self.communicator.world_size, self.m//self.communicator.world_size, self.k//self.communicator.world_size)
             B = B.unsqueeze(0)
+            B = B.unsqueeze(0) # [1, 1, k/d, n]
             C = self.multidevice_executor.run([A, B])[0]
             C = C.view(self.m // self.communicator.world_size, self.n)
         return C
