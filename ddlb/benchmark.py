@@ -50,6 +50,7 @@ def _benchmark_worker_entry(
                 'pytorch': ('ddlb.primitives.TPRowwise.pytorch', 'PyTorchTPRowwise'),
                 'fuser': ('ddlb.primitives.TPRowwise.fuser', 'FuserTPRowwise'),
                 'transformer_engine': ('ddlb.primitives.TPRowwise.transformer_engine', 'TransformerEngineTPRowwise'),
+                'custom_kernel': ('ddlb.primitives.TPRowwise.custom_kernel', 'CustomKernelTPRowwise'),
             },
         }
         
