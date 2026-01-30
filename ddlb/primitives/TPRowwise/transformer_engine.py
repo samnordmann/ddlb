@@ -48,11 +48,19 @@ class TransformerEngineTPRowwise(TPRowwise):
             device_id=self.communicator.device
         )
 
-        self._te.module.base.initialize_ub(shape=[self.m, self.k],
+        ub_name = "fc1"
+
+        ub_cfgs = {
+            f"{ub_name}_fprop": {
+                "method": "ring_exchange",
+            }
+        }
+
+        self._te.initialize_ub(shape=[self.m, self.n],
                                 tp_size=self.communicator.world_size,
                                 use_fp8=False,
                                 dtype=self.torch_dtype,
-                                ub_cfgs=None,
+                                ub_cfgs=ub_cfgs,
                                 bootstrap_backend="nccl")
 
         self.layer = self._te.Linear(
@@ -65,17 +73,17 @@ class TransformerEngineTPRowwise(TPRowwise):
             sequence_parallel=True,
             parallel_mode='row',
             tp_group=self.tp_group,
-            ub_overlap_rs=True,
-            ub_tp_comm_overlap=True,
+            ub_overlap_rs=True, # Passes when set to False
             tp_size=self.communicator.world_size,
-            ub_name="qkv"
-        )
+            ub_name=ub_name
+        ).cuda()
+
         self.layer.set_tensor_parallel_group(self.tp_group)
 
     def __del__(self):
         try:
             if hasattr(self, '_te'):
-                self._te.module.base.destroy_ub()
+                self._te.destroy_ub()
         except Exception:
             pass
         dist.destroy_process_group()
