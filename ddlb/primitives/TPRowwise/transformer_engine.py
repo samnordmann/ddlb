@@ -73,7 +73,7 @@ class TransformerEngineTPRowwise(TPRowwise):
             sequence_parallel=True,
             parallel_mode='row',
             tp_group=self.tp_group,
-            ub_overlap_rs=True, # Passes when set to False
+            ub_overlap_rs=False, # Passes when set to False
             tp_size=self.communicator.world_size,
             ub_name=ub_name
         ).cuda()

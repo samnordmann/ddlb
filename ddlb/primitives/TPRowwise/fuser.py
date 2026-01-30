@@ -210,6 +210,7 @@ class FuserTPRowwise(TPRowwise):
         
         # Get algorithm and pipeline size
         self.algorithm = self.options['algorithm']
+        self.s = self.options['s']
         
         # Initialize fusion definition based on algorithm
         if self.algorithm == 'default':
@@ -221,7 +222,6 @@ class FuserTPRowwise(TPRowwise):
                 self.communicator.world_size
             )
         elif self.algorithm == 'coll_pipeline':  # coll_pipeline
-            self.s = self.options['s']
             assert self.m % (self.communicator.world_size * self.s) == 0, "m must be divisible by s * world_size for the coll_pipeline algorithm"
             assert self.k % self.communicator.world_size == 0, "k must be divisible by world_size"
             self.fusion = MatmulRsCollectiveBasedPipelineFusion(
@@ -236,9 +236,9 @@ class FuserTPRowwise(TPRowwise):
         elif self.algorithm == 'p2p_pipeline':  # p2p_pipeline
             assert self.m % self.communicator.world_size == 0, "m must be divisible by world_size"
             assert self.k % self.communicator.world_size == 0, "k must be divisible by world_size"
-            self.s = self.options['s']
             if self.s != self.communicator.world_size:
                 print(f"Warning: s={self.s} is not equal to world_size={self.communicator.world_size} for p2p_pipeline algorithm. Ignoring s and using world_size instead.")
+                self.s = self.communicator.world_size
             self.fusion = MatmulRsP2PBasedPipelineFusion(
                 self.torch_dtype,
                 self.m,
@@ -250,6 +250,7 @@ class FuserTPRowwise(TPRowwise):
         params = nvfuser.multidevice.MultiDeviceExecutorParams()
         params.backend_type = nvfuser_backend
         params.use_allocation_cache = True
+        params.number_of_streams = self.s
         with self.fusion:
             self.fusion.definition()
             self.fusion.multidevice_schedule()
