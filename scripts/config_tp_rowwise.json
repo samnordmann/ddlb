@@ -10,6 +10,11 @@
         "num_warmups": 5,
         "output_csv": "results/tp_rowwise_results_{timestamp}.csv",
         "implementations": {
+            "custom_kernel": [
+                {
+                    "kernel": ["tp_rowwise_kernel", "tp_rowwise_simple"]
+                }
+            ],
             "transformer_engine": [
                 {}
             ],
