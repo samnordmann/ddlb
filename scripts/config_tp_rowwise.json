@@ -12,11 +12,8 @@
         "implementations": {
             "custom_kernel": [
                 {
-                    "kernel": ["tp_rowwise_kernel", "tp_rowwise_simple"]
+                    "kernel": ["tp_rowwise_cublas_nccl", "tp_rowwise_naive_nccl"]
                 }
-            ],
-            "transformer_engine": [
-                {}
             ],
             "fuser": [
                 {
