@@ -1,27 +1,28 @@
 {
     "benchmark": {
         "primitive": "tp_rowwise",
-        "m": [1024, 8192, 16384, 32768],
-        "n": [128, 1024, 16384],
-        "k": [1024, 8192, 16384],
+        "m": [8192],
+        "n": [8192],
+        "k": [8192],
         "dtype": "float16",
         "validate": true,
         "num_iterations": 50,
         "num_warmups": 5,
         "output_csv": "results/tp_rowwise_results_{timestamp}.csv",
         "implementations": {
-            "transformer_engine": [
-                {}
-            ],
             "fuser": [
+                {
+                    "algorithm": ["p2p_pipeline"],
+                    "backend": ["cuda"],
+                    "offset_stream_indexing_by_rank": [true]
+                },
                 {
                     "algorithm": ["default"],
                     "backend": ["nccl"]
-                },
-                {
-                    "algorithm": ["p2p_pipeline"],
-                    "backend": ["cuda"]
                 }
+            ],
+            "transformer_engine": [
+                {}
             ],
             "pytorch": [
                 {

@@ -114,13 +114,15 @@ class MatmulRsCollectiveBasedPipelineFusion(FusionDefinition):
         self.C.axis(2).parallelize(ParallelType.mesh_x)
 
 class MatmulRsP2PBasedPipelineFusion(FusionDefinition):
-    def __init__(self, dtype, m, k, n, num_devices, communication_backend):
+    def __init__(self, dtype, m, k, n, num_devices, communication_backend, offset_stream_indexing_by_rank):
         super().__init__()
         self.m = m
         self.k = k
         self.n = n
         self._num_devices = num_devices
         self.dtype = dtype
+        self.communication_backend = communication_backend
+        self.offset_stream_indexing_by_rank = offset_stream_indexing_by_rank
 
     def definition(self) -> None:
         m, k, n, d = (
@@ -141,6 +143,9 @@ class MatmulRsP2PBasedPipelineFusion(FusionDefinition):
         )
 
         self.C = self.ops.sum(self.C_unreduced, 0) # [r(d), didx(d), m/d, n]
+
+        if self.communication_backend == CommunicatorBackend.cuda and not self.offset_stream_indexing_by_rank:
+            self.C.set_memory_type(MemoryType.symmetric)
 
         self.add_output(self.C)
 
@@ -177,13 +182,19 @@ class FuserTPRowwise(TPRowwise):
     DEFAULT_OPTIONS = {
         'backend': 'nccl',  # Default backend
         'algorithm': 'default',
-        's': 8  # Default pipeline size
+        's': 8,  # Default pipeline size
+        'offset_stream_indexing_by_rank': True,
+        'multicast_protocol': 'default',
+        'inter_stream_synchronization': False,
     }
     
     ALLOWED_VALUES = {
         'backend': ['nccl', 'ucc', 'ucc/tl/nccl', 'ucc/tl/cuda', 'cuda'],
         'algorithm': ['default', 'coll_pipeline', 'p2p_pipeline'],
-        's': (1, float('inf'))  # Allow any positive integer
+        's': (1, float('inf')),  # Allow any positive integer
+        'offset_stream_indexing_by_rank': [True, False],
+        'multicast_protocol': ['default', 'memcpy', 'multimem', 'batch_memcpy'],
+        'inter_stream_synchronization': [True, False],
     }
     
     def __init__(self, *args, **kwargs):
@@ -199,19 +210,25 @@ class FuserTPRowwise(TPRowwise):
         else:
             self.backend = backend
             self.tl = None
-        
+
         # Set up environment variables (include nvFuser flags)
         _env_vars = setup_ucc_env_vars(backend)
         # Enable reduce-scatter resharding
         enable_flags = ['insert_resharding_after']
-        if enable_flags:
-            _env_vars['NVFUSER_ENABLE'] = ','.join(enable_flags)
-        self.env_guard = EnvVarGuard(_env_vars)
-        
+
         # Get algorithm and pipeline size
         self.algorithm = self.options['algorithm']
         self.s = self.options['s']
-        
+        self.offset_stream_indexing_by_rank = self.options['offset_stream_indexing_by_rank']
+        self.inter_stream_synchronization = self.options['inter_stream_synchronization']
+        self.multicast_protocol = self.options['multicast_protocol']
+        if self.multicast_protocol != 'default':
+            enable_flags.append(f'multicast_protocol({self.multicast_protocol})')
+
+        if enable_flags:
+            _env_vars['NVFUSER_ENABLE'] = ','.join(enable_flags)
+        self.env_guard = EnvVarGuard(_env_vars)
+
         # Initialize fusion definition based on algorithm
         if self.algorithm == 'default':
             self.fusion = MatmulRsFusion(
@@ -245,12 +262,16 @@ class FuserTPRowwise(TPRowwise):
                 self.k,
                 self.n,
                 self.communicator.world_size,
-                nvfuser_backend
+                nvfuser_backend,
+                self.offset_stream_indexing_by_rank
             )
         params = nvfuser.multidevice.MultiDeviceExecutorParams()
         params.backend_type = nvfuser_backend
         params.use_allocation_cache = True
+        params.offset_stream_indexing_by_rank = self.offset_stream_indexing_by_rank
+        params.inter_stream_synchronization = self.inter_stream_synchronization
         params.number_of_streams = self.s
+
         with self.fusion:
             self.fusion.definition()
             self.fusion.multidevice_schedule()

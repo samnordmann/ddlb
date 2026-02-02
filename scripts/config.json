@@ -8,7 +8,7 @@
         "validate": true,
         "num_iterations": 50,
         "num_warmups": 5,
-        "time_measurement_backend": "cpu_clock", // possible values: "cpu_clock", "cuda_event"
+        "time_measurement_backend": "cpu_clock",
         "barrier_at_each_iteration": true,
         "output_csv": "results/tp_columnwise_results_{timestamp}.csv",
         "implementations": {
@@ -23,12 +23,12 @@
             "fuser": [
                 {
                     "algorithm": ["default"],
-                    "backend": ["nccl"],
+                    "backend": ["nccl"]
                 },
                 {
                     "algorithm": ["default"],
                     "backend": ["cuda"],
-                    "multicast_protocol": ["memcpy", "multicast"]
+                    "multicast_protocol": ["memcpy", "multimem"]
                 },
                 {
                     "algorithm": ["p2p_pipeline"],
@@ -39,7 +39,7 @@
                     "backend": ["cuda"],
                     "inter_stream_synchronization": [true, false],
                     "offset_stream_indexing_by_rank": [true],
-                    "multicast_protocol": ["memcpy", "multicast"]
+                    "multicast_protocol": ["memcpy", "multimem"]
                 }
             ],
             "transformer_engine": [
