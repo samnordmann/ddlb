@@ -1,0 +1,34 @@
+{
+    "benchmark": {
+        "primitive": "tp_rowwise",
+        "m": [1024, 8192, 16384, 32768],
+        "n": [128, 1024, 16384],
+        "k": [1024, 8192, 16384],
+        "dtype": "float16",
+        "validate": true,
+        "num_iterations": 50,
+        "num_warmups": 5,
+        "output_csv": "results/tp_rowwise_results_{timestamp}.csv",
+        "implementations": {
+            "transformer_engine": [
+                {}
+            ],
+            "fuser": [
+                {
+                    "algorithm": ["default"],
+                    "backend": ["nccl"]
+                },
+                {
+                    "algorithm": ["p2p_pipeline"],
+                    "backend": ["cuda"]
+                }
+            ],
+            "pytorch": [
+                {
+                    "backend": ["nccl"]
+                }
+            ]
+        }
+    }
+}
+
