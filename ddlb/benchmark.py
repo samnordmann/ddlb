@@ -29,7 +29,7 @@ def _benchmark_worker_entry(
     result_queue,
     time_measurement_backend: str = 'cpu_clock',
     barrier_at_each_iteration: bool = True,
-    primitive: str,
+    primitive: str = 'tp_rowwise'
 ):
     # Import CUDA-dependent libraries inside child process only and lazily
     import torch
@@ -165,8 +165,7 @@ def _benchmark_worker_entry(
                     impl.communicator.barrier()
                     
                     start_time = time.perf_counter()
-                    with nvtx.annotate(f"Iteration {i} {impl_label} {option_str}", color="red"):
-                      last_result = impl.run()
+                    last_result = impl.run()
                     torch.cuda.synchronize()
                     end_time = time.perf_counter()
                     
