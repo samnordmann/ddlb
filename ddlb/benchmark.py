@@ -12,7 +12,6 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-import nvtx
 from ddlb.envs import get_world_size, get_rank
 
 # Avoid importing CUDA-dependent primitives in the parent process.
@@ -117,8 +116,7 @@ def _benchmark_worker_entry(
         option_str = ", ".join(f"{k}={filtered_impl_option_values[k]}" for k in ordered_option_keys)
 
         for i in range(num_warmups):
-            with nvtx.annotate(f"Warmup {i} {impl_label} {option_str}", color="red"):
-                impl.run()
+            impl.run()
 
         # CUDA timing events
         start_events = [torch.cuda.Event(enable_timing=True) for _ in range(num_iterations)]
@@ -127,8 +125,7 @@ def _benchmark_worker_entry(
         last_result = None
         for i in range(num_iterations):
             start_events[i].record()
-            with nvtx.annotate(f"Iteration {i} {impl_label} {option_str}", color="red"):
-                last_result = impl.run()
+            last_result = impl.run()
             end_events[i].record()
 
         torch.cuda.synchronize()

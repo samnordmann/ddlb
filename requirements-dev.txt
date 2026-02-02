@@ -8,4 +8,3 @@ mypy>=1.0.0
 pre-commit>=3.0.0
 sphinx>=6.0.0
 sphinx-rtd-theme>=1.0.0
-nvtx
