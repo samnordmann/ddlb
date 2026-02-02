@@ -6,7 +6,7 @@ import os
 import torch
 import torch.distributed as dist
 import nvfuser_direct as nvfuser
-from nvfuser_direct import DataType, FusionDefinition, CommunicatorBackend, ParallelType
+from nvfuser_direct import DataType, FusionDefinition, CommunicatorBackend, ParallelType, MemoryType
 from nvfuser_direct.pytorch_utils import torch_dtype_to_nvfuser_dtype
 
 from .tp_columnwise import TPColumnwise
@@ -14,13 +14,14 @@ from .utils import EnvVarGuard, setup_ucc_env_vars
 
 
 class AgMatmulFusion(FusionDefinition):
-    def __init__(self, dtype, m, k, n, num_devices):
+    def __init__(self, dtype, m, k, n, num_devices, communication_backend):
         super().__init__()
         self.m = m
         self.k = k
         self.n = n
         self._num_devices = num_devices
         self.dtype = dtype
+        self.communication_backend = communication_backend
 
     def definition(self) -> None:
         m, k, n, d = (
@@ -40,6 +41,8 @@ class AgMatmulFusion(FusionDefinition):
             self.A, self.B
         ) 
 
+        if self.communication_backend == CommunicatorBackend.cuda:
+            self.C.set_memory_type(MemoryType.symmetric)
         self.add_output(self.C)
 
     def multidevice_schedule(self):
@@ -97,13 +100,15 @@ class AgMatmulCollectiveBasedPipelineFusion(FusionDefinition):
         self.C.axis(0).parallelize(ParallelType.stream)
 
 class AgMatmulP2PBasedPipelineFusion(FusionDefinition):
-    def __init__(self, dtype, m, k, n, num_devices, communication_backend):
+    def __init__(self, dtype, m, k, n, num_devices, communication_backend, offset_stream_indexing_by_rank):
         super().__init__()
         self.m = m
         self.k = k
         self.n = n
         self._num_devices = num_devices
         self.dtype = dtype
+        self.communication_backend = communication_backend
+        self.offset_stream_indexing_by_rank = offset_stream_indexing_by_rank
 
     def definition(self) -> None:
         m, k, n, d = (
@@ -122,6 +127,9 @@ class AgMatmulP2PBasedPipelineFusion(FusionDefinition):
         self.C = self.ops.matmul(
             self.A, self.B
         ) 
+
+        if self.communication_backend == CommunicatorBackend.cuda and not self.offset_stream_indexing_by_rank:
+            self.C.set_memory_type(MemoryType.symmetric)
 
         self.add_output(self.C)
 
@@ -153,14 +161,20 @@ class FuserTPColumnwise(TPColumnwise):
         'backend': 'nccl',  # Default backend
         'order': 'AG_before',  # Default order
         'algorithm': 'default',
-        's': 8  # Default pipeline size
+        's': 8,  # Default pipeline size
+        'offset_stream_indexing_by_rank': True,
+        'multicast_protocol': 'default',
+        'inter_stream_synchronization': False,
     }
     
     ALLOWED_VALUES = {
         'backend': ['nccl', 'ucc', 'ucc/tl/nccl', 'ucc/tl/cuda', 'cuda'],
         'order': ['AG_before', 'AG_after'],
         'algorithm': ['default', 'coll_pipeline', 'p2p_pipeline'],
-        's': (1, float('inf'))  # Allow any positive integer
+        's': (1, float('inf')),  # Allow any positive integer
+        'offset_stream_indexing_by_rank': [True, False],
+        'multicast_protocol': ['default', 'memcpy', 'multimem', 'batch_memcpy'],
+        'inter_stream_synchronization': [True, False],
     }
     
     def __init__(self, *args, **kwargs):
@@ -185,6 +199,12 @@ class FuserTPColumnwise(TPColumnwise):
         enable_flags = []
         if self.order == 'AG_after':
             enable_flags.append('insert_resharding_after')
+        
+        multicast_protocol = self.options['multicast_protocol']
+        if multicast_protocol != 'default':
+            enable_flags.append(f'multicast_protocol({multicast_protocol})')
+            # enable_flags.append(f'multicast_protocol({multicast_protocol},1024,4)')
+
         if enable_flags:
             _env_vars['NVFUSER_ENABLE'] = ','.join(enable_flags)
         self.env_guard = EnvVarGuard(_env_vars)
@@ -199,7 +219,8 @@ class FuserTPColumnwise(TPColumnwise):
                 self.m, 
                 self.k, 
                 self.n, 
-                self.communicator.world_size
+                self.communicator.world_size,
+                nvfuser_backend
             )
         elif self.algorithm == 'coll_pipeline':  # coll_pipeline
             self.s = self.options['s']
@@ -220,11 +241,14 @@ class FuserTPColumnwise(TPColumnwise):
                 self.k,
                 self.n,
                 self.communicator.world_size,
-                nvfuser_backend
+                nvfuser_backend,
+                self.options['offset_stream_indexing_by_rank']
             )
         params = nvfuser.multidevice.MultiDeviceExecutorParams()
         params.backend_type = nvfuser_backend
         params.use_allocation_cache = True
+        params.offset_stream_indexing_by_rank = self.options['offset_stream_indexing_by_rank']
+        params.inter_stream_synchronization = self.options['inter_stream_synchronization']
         with self.fusion:
             self.fusion.definition()
             self.fusion.multidevice_schedule()
@@ -242,7 +266,6 @@ class FuserTPColumnwise(TPColumnwise):
         A, B = self.get_inputs()
         if self.algorithm == 'default':
             A = A.unsqueeze(0)
-            # C = self.fusion.execute([A, B])[0][0]
             C = self.multidevice_executor.run([A, B])[0]
             C = C.reshape(C.shape[0] * C.shape[1], C.shape[2])
         elif self.algorithm == 'coll_pipeline':  # coll_pipeline
