@@ -12,7 +12,6 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-import nvtx
 from ddlb.envs import get_world_size, get_rank
 
 # Avoid importing CUDA-dependent primitives in the parent process.
@@ -120,8 +119,7 @@ def _benchmark_worker_entry(
         option_str = ", ".join(f"{k}={filtered_impl_option_values[k]}" for k in ordered_option_keys)
 
         for i in range(num_warmups):
-            with nvtx.annotate(f"Warmup {i} {impl_label} {option_str}", color="red"):
-                impl.run()
+            impl.run()
 
         # Timing loop based on backend configuration
         times = []
