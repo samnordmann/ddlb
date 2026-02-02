@@ -27,10 +27,13 @@ def _benchmark_worker_entry(
     impl_opts: Dict,
     validate: bool,
     result_queue,
+    time_measurement_backend: str = 'cpu_clock',
+    barrier_at_each_iteration: bool = True,
     primitive: str,
 ):
     # Import CUDA-dependent libraries inside child process only and lazily
     import torch
+    import torch.distributed as dist
     import numpy as _np
     import importlib as _importlib
     import socket as _socket
@@ -118,18 +121,89 @@ def _benchmark_worker_entry(
         for i in range(num_warmups):
             impl.run()
 
-        # CUDA timing events
-        start_events = [torch.cuda.Event(enable_timing=True) for _ in range(num_iterations)]
-        end_events = [torch.cuda.Event(enable_timing=True) for _ in range(num_iterations)]
+        # Timing loop based on backend configuration
+        times = []
+        
+        if time_measurement_backend == 'cuda_event':
+            if barrier_at_each_iteration:
+                start_events = [torch.cuda.Event(enable_timing=True) for _ in range(num_iterations)]
+                end_events = [torch.cuda.Event(enable_timing=True) for _ in range(num_iterations)]
+                
+                for i in range(num_iterations):
+                    # NCCL allreduce + wait
+                    dummy = torch.tensor([0], device=impl.communicator.device, dtype=torch.int)
+                    if dist.is_initialized():
+                        dist.all_reduce(dummy)
+                        torch.cuda.synchronize()
+                    
+                    start_events[i].record()
+                    last_result = impl.run()
+                    end_events[i].record()
+                
+                torch.cuda.synchronize()
+                times = [start_events[i].elapsed_time(end_events[i]) for i in range(num_iterations)]
+            else:
+                 # Aggregate measurement without barrier
+                 start_event = torch.cuda.Event(enable_timing=True)
+                 end_event = torch.cuda.Event(enable_timing=True)
+                 
+                 torch.cuda.synchronize()
+                 start_event.record()
+                 for i in range(num_iterations):
+                     last_result = impl.run()
+                 end_event.record()
+                 
+                 torch.cuda.synchronize()
+                 total_time_ms = start_event.elapsed_time(end_event)
+                 mean_time = float(total_time_ms / num_iterations)
+                 times = [mean_time] * num_iterations
+            
+        elif time_measurement_backend == 'cpu_clock':
+            if barrier_at_each_iteration:
+                # Per-iteration measurement with barrier
+                for i in range(num_iterations):
+                    impl.communicator.barrier()
+                    
+                    start_time = time.perf_counter()
+                    with nvtx.annotate(f"Iteration {i} {impl_label} {option_str}", color="red"):
+                      last_result = impl.run()
+                    torch.cuda.synchronize()
+                    end_time = time.perf_counter()
+                    
+                    times.append((end_time - start_time) * 1000)
+            else:
+                # Aggregate measurement without barrier
+                torch.cuda.synchronize()
+                start_time = time.perf_counter()
+                
+                for i in range(num_iterations):
+                    last_result = impl.run()
+                    
+                torch.cuda.synchronize()
+                end_time = time.perf_counter()
+                
+                total_time_ms = (end_time - start_time) * 1000
+                mean_time = float(total_time_ms / num_iterations)
+                times = [mean_time] * num_iterations
+        else:
+            raise ValueError(f"Unknown time_measurement_backend: {time_measurement_backend}")
 
-        last_result = None
-        for i in range(num_iterations):
-            start_events[i].record()
-            last_result = impl.run()
-            end_events[i].record()
-
-        torch.cuda.synchronize()
-        times = [start_events[i].elapsed_time(end_events[i]) for i in range(num_iterations)]
+        # AllReduce times vector with MAX operator across ranks
+        times_tensor = torch.tensor(times, device=impl.communicator.device, dtype=torch.float64)
+        if not dist.is_initialized():
+             # Initialize process group if not already initialized
+             master_addr = os.environ.get('DDLB_MASTER_ADDR', 'localhost')
+             master_port = os.environ.get('DDLB_MASTER_PORT', '12345')
+             dist.init_process_group(
+                backend='nccl',
+                rank=impl.communicator.rank,
+                world_size=impl.communicator.world_size,
+                init_method=f"tcp://{master_addr}:{master_port}",
+                device_id=impl.communicator.device
+            )
+        dist.all_reduce(times_tensor, op=dist.ReduceOp.MAX)
+        times = times_tensor.tolist()
+        
         mean_time = float(_np.mean(times))
         std_time = float(_np.std(times))
 
@@ -158,6 +232,8 @@ def _benchmark_worker_entry(
             'Throughput std (TFLOPS)': std_throughput,
             'world_size': world_size,
             'hostname': hostname,
+            'time_measurement_backend': time_measurement_backend,
+            'barrier_at_each_iteration': barrier_at_each_iteration,
             'option': option_str,
         }
 
@@ -204,6 +280,8 @@ class PrimitiveBenchmarkRunner:
         num_warmups: int = 2,
         implementation_options: Optional[Dict[str, Dict]] = None,
         output_csv: Optional[str] = None,
+        time_measurement_backend: str = 'cpu_clock',
+        barrier_at_each_iteration: bool = True,
     ):
         """
         Initialize the benchmark runner.
@@ -219,6 +297,8 @@ class PrimitiveBenchmarkRunner:
             num_iterations: Number of iterations for timing
             num_warmups: Number of warmup iterations
             implementation_options: Optional dictionary of implementation-specific options
+            time_measurement_backend: Backend for timing ('cpu_clock' or 'cuda_event')
+            barrier_at_each_iteration: Whether to synchronize ranks before each iteration
         """
         if primitive not in self.ALLOWED_PRIMITIVES:
             raise ValueError(f"Unknown primitive: {primitive}")
@@ -234,6 +314,8 @@ class PrimitiveBenchmarkRunner:
         self.implementations = implementations
         self.implementation_options = implementation_options or {}
         self.output_csv = output_csv
+        self.time_measurement_backend = time_measurement_backend
+        self.barrier_at_each_iteration = barrier_at_each_iteration
     
     # _create_implementation is intentionally omitted in favor of per-impl subprocesses
     
@@ -282,7 +364,7 @@ class PrimitiveBenchmarkRunner:
             result_queue = ctx.SimpleQueue()
             proc = ctx.Process(
                 target=_benchmark_worker_entry,
-                args=(impl_id, self.m, self.n, self.k, self.dtype, self.num_warmups, self.num_iterations, impl_opts, self.validate, result_queue, self.primitive),
+                args=(impl_id, self.m, self.n, self.k, self.dtype, self.num_warmups, self.num_iterations, impl_opts, self.validate, result_queue, self.time_measurement_backend, self.barrier_at_each_iteration, self.primitive),
             )
             proc.start()
             result_row = result_queue.get()

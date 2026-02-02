@@ -138,6 +138,8 @@ def run_benchmark(config: dict) -> None:
     num_iterations = benchmark_config['num_iterations']
     num_warmups = benchmark_config['num_warmups']
     output_csv: Optional[str] = benchmark_config.get('output_csv')
+    time_measurement_backend = benchmark_config.get('time_measurement_backend', 'cpu_clock')
+    barrier_at_each_iteration = benchmark_config.get('barrier_at_each_iteration', True)
 
     # Generate all possible combinations of configurations
     expanded_config = generate_config_combinations(benchmark_config['implementations'])
@@ -201,7 +203,9 @@ def run_benchmark(config: dict) -> None:
             num_iterations=num_iterations,
             num_warmups=num_warmups,
             implementation_options=implementation_options,
-            output_csv=output_csv_path
+            output_csv=output_csv_path,
+            time_measurement_backend=time_measurement_backend,
+            barrier_at_each_iteration=barrier_at_each_iteration
         )
         result_frames.append(runner.run())
 
