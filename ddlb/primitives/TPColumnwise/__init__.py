@@ -7,6 +7,7 @@ from .tp_columnwise import TPColumnwise
 __all__ = [
     'TPColumnwise',
     'PyTorchTPColumnwise',
+    'PyTorchSymMemTPColumnwise',
     'ComputeOnlyTPColumnwise',
     'FuserTPColumnwise',
     'TransformerEngineTPColumnwise',
@@ -20,6 +21,7 @@ import typing as _typing
 
 if _typing.TYPE_CHECKING:  # for type checkers only; does not execute at runtime
     from .pytorch import PyTorchTPColumnwise  # noqa: F401
+    from .pytorch_sym_mem import PyTorchSymMemTPColumnwise  # noqa: F401
     from .compute_only import ComputeOnlyTPColumnwise  # noqa: F401
     from .fuser import FuserTPColumnwise  # noqa: F401
     from .transformer_engine import TransformerEngineTPColumnwise  # noqa: F401
@@ -28,6 +30,8 @@ if _typing.TYPE_CHECKING:  # for type checkers only; does not execute at runtime
 def __getattr__(name):
     if name == 'PyTorchTPColumnwise':
         return importlib.import_module('.pytorch', __name__).PyTorchTPColumnwise
+    if name == 'PyTorchSymMemTPColumnwise':
+        return importlib.import_module('.pytorch_sym_mem', __name__).PyTorchSymMemTPColumnwise
     if name == 'ComputeOnlyTPColumnwise':
         return importlib.import_module('.compute_only', __name__).ComputeOnlyTPColumnwise
     if name == 'FuserTPColumnwise':
