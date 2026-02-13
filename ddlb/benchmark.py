@@ -43,6 +43,7 @@ def _benchmark_worker_entry(
         primitive_mappings = {
             'tp_columnwise': {
                 'pytorch': ('ddlb.primitives.TPColumnwise.pytorch', 'PyTorchTPColumnwise'),
+                'pytorch_sym_mem': ('ddlb.primitives.TPColumnwise.pytorch_sym_mem', 'PyTorchSymMemTPColumnwise'),
                 'compute_only': ('ddlb.primitives.TPColumnwise.compute_only', 'ComputeOnlyTPColumnwise'),
                 'fuser': ('ddlb.primitives.TPColumnwise.fuser', 'FuserTPColumnwise'),
                 'transformer_engine': ('ddlb.primitives.TPColumnwise.transformer_engine', 'TransformerEngineTPColumnwise'),
