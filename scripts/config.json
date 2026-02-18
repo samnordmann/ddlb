@@ -50,6 +50,11 @@
             ],
             "pytorch_sym_mem": [
                 {}
+            ],
+            "ddlp": [
+                {
+                    "backend": ["pytorch", "fuser", "transformer_engine"]
+                }
             ]
         }
     }

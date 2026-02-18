@@ -12,6 +12,7 @@ __all__ = [
     'FuserTPColumnwise',
     'TransformerEngineTPColumnwise',
     'JAXTPColumnwise',
+    'DDLPTPColumnwise',
 ]
 
 # Lazy attribute-based imports to avoid importing optional heavy deps (e.g.,
@@ -26,6 +27,7 @@ if _typing.TYPE_CHECKING:  # for type checkers only; does not execute at runtime
     from .fuser import FuserTPColumnwise  # noqa: F401
     from .transformer_engine import TransformerEngineTPColumnwise  # noqa: F401
     from .jax_tp import JAXTPColumnwise  # noqa: F401
+    from .ddlp import DDLPTPColumnwise  # noqa: F401
 
 def __getattr__(name):
     if name == 'PyTorchTPColumnwise':
@@ -40,4 +42,6 @@ def __getattr__(name):
         return importlib.import_module('.transformer_engine', __name__).TransformerEngineTPColumnwise
     if name == 'JAXTPColumnwise':
         return importlib.import_module('.jax_tp', __name__).JAXTPColumnwise
+    if name == 'DDLPTPColumnwise':
+        return importlib.import_module('.ddlp', __name__).DDLPTPColumnwise
     raise AttributeError(f"module {__name__} has no attribute {name}")

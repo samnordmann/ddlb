@@ -10,7 +10,7 @@ A library for benchmarking distributed deep learning primitives and operations a
   - PyTorch Distributed with various backends (NCCL, UCC/TL)
   - nvFuser with different communications backends and algorithms (including pipelines for comm/compute overlap) 
   - Compute-only reference implementations
-  - JAX and Transformer Engine implementations
+  - JAX, Transformer Engine, and DDLP implementations
 - Configurable benchmark parameters via JSON
 - Automatic validation of results
 - Performance visualization
