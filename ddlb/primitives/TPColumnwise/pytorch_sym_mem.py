@@ -61,8 +61,8 @@ class PyTorchSymMemTPColumnwise(TPColumnwise):
         # Keep input current in case callers mutate A between runs.
         self.A_symm.copy_(self.A)
         _, outputs = torch.ops.symm_mem.fused_all_gather_matmul(
-            self.A_symm.contiguous(),
-            [self.B.contiguous()],
+            self.A_symm,
+            [self.B],
             gather_dim=0,
             group_name=dist.group.WORLD.group_name,
             return_A=False,
