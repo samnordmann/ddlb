@@ -15,17 +15,18 @@ class DDLPTPColumnwise(TPColumnwise):
     """
     TP Column-wise implementation powered by the optional DDLP package.
 
-    The primitive in DDLB expects row-sharded input A, so we first all-gather A to
-    reconstruct the full matrix, then run DDLP's column-parallel linear where DDLP
-    performs feature all-gather internally.
+    Maps C = A @ B to DDLP's column-parallel linear by swapping roles:
+    - A (row-sharded): weight sharded along output dimension
+    - B (replicated): input activation
+    All communication and compute are done inside DDLP.
     """
 
     DEFAULT_OPTIONS = {
-        "backend": "fuser",
+        "backend": "auto",
     }
 
     ALLOWED_VALUES = {
-        "backend": ["pytorch", "fuser", "transformer_engine"],
+        "backend": ["auto", "pytorch", "fuser", "transformer_engine"],
     }
 
     def __init__(self, *args, **kwargs):
@@ -52,27 +53,20 @@ class DDLPTPColumnwise(TPColumnwise):
             )
             self._owns_process_group = True
 
-        self.A_gathered = torch.empty(
-            self.m,
-            self.k,
-            dtype=self.A.dtype,
-            device=self.A.device,
-        )
-
+        # Map C = A @ B to DDLP: C^T = B^T @ A^T
+        # DDLP input = B^T [n, k], weight = A [m/world_size, k] per rank
         self.layer = self._ddlp_primitives.LinearColumnwise(
             in_features=self.k,
-            out_features=self.n,
+            out_features=self.m,
             bias=False,
             backend=self.options["backend"],
             device=self.communicator.device,
             dtype=self.A.dtype,
         )
-
-        local_out = self.n // self.communicator.world_size
-        start = self.communicator.rank * local_out
-        end = start + local_out
         with torch.no_grad():
-            self.layer.weight.copy_(self.B[:, start:end].t().contiguous())
+            self.layer.weight.copy_(self.A)
+        # Cache contiguous B^T to avoid implicit copy in fuser's reshape(-1, k) each forward
+        self._B_t = self.B.t().contiguous()
 
     def __del__(self):
         if getattr(self, "_owns_process_group", False) and dist.is_initialized():
@@ -80,5 +74,5 @@ class DDLPTPColumnwise(TPColumnwise):
             self.communicator.barrier()
 
     def run(self) -> torch.Tensor:
-        dist.all_gather_into_tensor(self.A_gathered, self.A)
-        return self.layer(self.A_gathered)
+        # B.T: [n, k] as input; DDLP output: [n, m]; return transpose -> [m, n]
+        return self.layer(self._B_t).t()
