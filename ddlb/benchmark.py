@@ -48,6 +48,7 @@ def _benchmark_worker_entry(
                 'fuser': ('ddlb.primitives.TPColumnwise.fuser', 'FuserTPColumnwise'),
                 'transformer_engine': ('ddlb.primitives.TPColumnwise.transformer_engine', 'TransformerEngineTPColumnwise'),
                 'jax': ('ddlb.primitives.TPColumnwise.jax_tp', 'JAXTPColumnwise'),
+                'ddlp': ('ddlb.primitives.TPColumnwise.ddlp', 'DDLPTPColumnwise'),
             },
             'tp_rowwise': {
                 'pytorch': ('ddlb.primitives.TPRowwise.pytorch', 'PyTorchTPRowwise'),

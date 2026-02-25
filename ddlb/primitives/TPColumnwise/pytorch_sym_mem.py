@@ -41,13 +41,14 @@ class PyTorchSymMemTPColumnwise(TPColumnwise):
         if enable_fn is not None:
             enable_fn(group_name)
 
-        # Allocate A in symmetric memory once and keep it for repeated runs.
+        # Allocate A in symmetric memory once; alias self.A to it so no copy in run().
         self.A_symm = symm_mem.empty(
             self.A.shape,
             dtype=self.A.dtype,
             device=self.A.device,
         )
         self.A_symm.copy_(self.A)
+        self.A = self.A_symm
 
     def __del__(self):
         if dist.is_available() and dist.is_initialized():
@@ -58,11 +59,9 @@ class PyTorchSymMemTPColumnwise(TPColumnwise):
         """
         Run TP Column-wise operation via fused all-gather + matmul.
         """
-        # Keep input current in case callers mutate A between runs.
-        self.A_symm.copy_(self.A)
         _, outputs = torch.ops.symm_mem.fused_all_gather_matmul(
-            self.A_symm.contiguous(),
-            [self.B.contiguous()],
+            self.A,
+            [self.B],
             gather_dim=0,
             group_name=dist.group.WORLD.group_name,
             return_A=False,
