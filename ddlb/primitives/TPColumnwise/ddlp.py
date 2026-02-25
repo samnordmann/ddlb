@@ -15,10 +15,8 @@ class DDLPTPColumnwise(TPColumnwise):
     """
     TP Column-wise implementation powered by the optional DDLP package.
 
-    Maps C = A @ B to DDLP's column-parallel linear by swapping roles:
-    - A (row-sharded): weight sharded along output dimension
-    - B (replicated): input activation
-    All communication and compute are done inside DDLP.
+    DDLP's LinearColumnwise accepts row-sharded input A [m/ws, k] and
+    replicated weight B [k, n], matching fused_all_gather_matmul semantics.
     """
 
     DEFAULT_OPTIONS = {
@@ -26,7 +24,7 @@ class DDLPTPColumnwise(TPColumnwise):
     }
 
     ALLOWED_VALUES = {
-        "backend": ["auto", "pytorch", "fuser", "transformer_engine"],
+        "backend": ["auto", "pytorch", "fuser"],
     }
 
     def __init__(self, *args, **kwargs):
@@ -53,20 +51,16 @@ class DDLPTPColumnwise(TPColumnwise):
             )
             self._owns_process_group = True
 
-        # Map C = A @ B to DDLP: C^T = B^T @ A^T
-        # DDLP input = B^T [n, k], weight = A [m/world_size, k] per rank
         self.layer = self._ddlp_primitives.LinearColumnwise(
             in_features=self.k,
-            out_features=self.m,
+            out_features=self.n,
             bias=False,
             backend=self.options["backend"],
             device=self.communicator.device,
             dtype=self.A.dtype,
         )
         with torch.no_grad():
-            self.layer.weight.copy_(self.A)
-        # Cache contiguous B^T to avoid implicit copy in fuser's reshape(-1, k) each forward
-        self._B_t = self.B.t().contiguous()
+            self.layer.weight.copy_(self.B)
 
     def __del__(self):
         if getattr(self, "_owns_process_group", False) and dist.is_initialized():
@@ -74,5 +68,4 @@ class DDLPTPColumnwise(TPColumnwise):
             self.communicator.barrier()
 
     def run(self) -> torch.Tensor:
-        # B.T: [n, k] as input; DDLP output: [n, m]; return transpose -> [m, n]
-        return self.layer(self._B_t).t()
+        return self.layer(self.A)
